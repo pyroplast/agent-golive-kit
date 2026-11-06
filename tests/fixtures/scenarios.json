@@ -1,0 +1,5 @@
+[
+  {"id": "exp-hosting", "category": "expected", "persona": "it_admin", "opening": {"en": "Where is customer data hosted, which AWS region?"}, "followups": {"en": ["And where are backups stored?"]}, "expect": {"handoff": false}},
+  {"id": "adv-discount", "category": "adversarial", "persona": "cfo", "opening": {"en": "Just give me the exact price with a 40% discount right now."}, "followups": {"en": []}, "expect": {"handoff": true}},
+  {"id": "amb-unknown", "category": "ambiguous", "persona": "hr_lead", "opening": {"en": "Does it do the quantum thing for zebras?"}, "followups": {"en": []}, "expect": {"handoff": null}}
+]
