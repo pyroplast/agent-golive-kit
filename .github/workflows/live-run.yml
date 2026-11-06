@@ -1,0 +1,56 @@
+name: live run
+
+# Runs the suite on Amazon Bedrock. Needs repository variables:
+#   AWS_ROLE_ARN   (output of the GitHubAccess stack)
+#   MODEL_AGENT, MODEL_JUDGE, MODEL_BUYER   (Bedrock inference profile ids)
+#   REPORT_BUCKET  (optional: output of the HiBobDeployKit stack; enables publish + diff vs last run)
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: Run name
+        required: true
+        default: baseline
+      limit:
+        description: Only the first N scenarios (empty = all)
+        required: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: eu-west-1
+      MODEL_AGENT: ${{ vars.MODEL_AGENT }}
+      MODEL_JUDGE: ${{ vars.MODEL_JUDGE }}
+      MODEL_BUYER: ${{ vars.MODEL_BUYER }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: eu-west-1
+      - name: Run and publish (bucket configured)
+        if: ${{ vars.REPORT_BUCKET != '' && inputs.limit == '' }}
+        env:
+          REPORT_BUCKET: ${{ vars.REPORT_BUCKET }}
+          RUN_NAME: ${{ inputs.name }}
+          WORKDIR: ${{ github.workspace }}/work
+        run: python -m deploykit.job
+      - name: Run only (no bucket, or a limited smoke test)
+        if: ${{ vars.REPORT_BUCKET == '' || inputs.limit != '' }}
+        run: |
+          python -m deploykit run --provider bedrock --name "${{ inputs.name }}" \
+            --out work/runs ${{ inputs.limit && format('--limit {0}', inputs.limit) || '' }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: run-${{ inputs.name }}
+          path: work/runs/${{ inputs.name }}/
