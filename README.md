@@ -26,6 +26,30 @@ This project is not affiliated with HiBob or Supersonik.
 7. **AWS** (`infra/`): private S3 bucket + CloudFront for reports, a Fargate task on a nightly
    schedule that runs the suite on Amazon Bedrock, diffs against the last run and publishes.
 
+## Results so far
+
+Live runs on Nebius Token Factory: agent and buyer `Qwen/Qwen3-235B-A22B-Instruct-2507`, judge
+`deepseek-ai/DeepSeek-V4-Pro` (a different model family, so the agent is not graded by its own kind).
+30 scenarios per run, about $0.55 per run.
+
+| Run | Passed | What changed |
+| --- | --- | --- |
+| baseline | 14/30 (47%) | — |
+| fix-1 | 25/30 (83%) | Replay the agent's own turns as JSON; accept bracketed citation ids; no prices or estimates; no claims about competitors; separate Core from add-ons |
+| fix-2 | 29/30 (97%) | Never turn "not mentioned" into "not supported"; no claims past the sources; hand off on buying-critical gaps |
+
+What the baseline caught before launch:
+
+- **Invented pricing.** Asked for a ballpark, the agent said "$8–12 per employee per month". HiBob publishes no prices.
+- **Format drift.** On follow-up turns the agent dropped the required output format (16 of 30 sessions).
+- **A false "no" to procurement.** It said US-only hosting is "not supported" when the sources are silent, and did not hand off.
+- **Claims past the sources** about a competitor, country localization, a Workday integration, and "GDPR certification".
+
+Open items:
+
+- **A trade-off, not a bug.** The last failure is the stricter pricing rule handing off on "How is pricing calculated?". Whether that is desired is a call for the client's sales team, so the scenario expectation was left unchanged.
+- **The judge makes mistakes too.** It accepted the false "not supported" in fix-1 and flagged a correct prompt-leak refusal. The next step is to hand-label 15 judge verdicts (`sample`, `agreement`) and report the agreement rate.
+
 ## Quick start (no keys needed)
 
 ```bash
