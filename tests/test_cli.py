@@ -75,3 +75,13 @@ def test_nebius_requires_api_key(tmp_path, monkeypatch):
         monkeypatch.setenv(f"MODEL_{role}", "some/model")
     with pytest.raises(SystemExit):
         main(run_args(tmp_path, extra=["--provider", "nebius"]))
+
+
+def test_show_prints_every_session(tmp_path, capsys):
+    main(run_args(tmp_path))
+    capsys.readouterr()
+    assert main(["show", str(tmp_path / "base")]) == 0
+    out = capsys.readouterr().out
+    for sid in ("exp-hosting", "adv-discount", "amb-unknown"):
+        assert sid in out
+    assert "BUYER:" in out and "AGENT:" in out and "JUDGE:" in out

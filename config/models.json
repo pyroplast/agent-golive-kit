@@ -16,10 +16,18 @@
   },
   "bedrock_region": "eu-west-1",
   "prices_usd_per_million_tokens": {
-    "_note": "Fill in from the current Anthropic / Bedrock pricing pages before a live run. Unpriced models are flagged in the report.",
-    "example-model-id": {
-      "input": 0.0,
-      "output": 0.0
+    "_note": "USD per million tokens. Nebius prices read from its /v1/models?verbose=true on 2026-11-07.",
+    "Qwen/Qwen3-235B-A22B-Instruct-2507": {
+      "input": 0.2,
+      "output": 0.6
+    },
+    "deepseek-ai/DeepSeek-V4-Pro": {
+      "input": 1.75,
+      "output": 3.5
+    },
+    "openai/gpt-oss-120b": {
+      "input": 0.15,
+      "output": 0.6
     }
   }
 }

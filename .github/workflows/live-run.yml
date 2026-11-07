@@ -69,6 +69,7 @@ jobs:
             ARGS="$ARGS --compare-to work/runs/${{ inputs.compare_to }}"
           fi
           python -m deploykit run $ARGS
+          python -m deploykit show work/runs/${{ inputs.name }}
 
       - name: Publish to S3 (bedrock with REPORT_BUCKET only)
         if: ${{ inputs.provider == 'bedrock' && vars.REPORT_BUCKET != '' }}

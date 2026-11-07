@@ -85,6 +85,26 @@ def cmd_models(a):
     return 0
 
 
+def cmd_show(a):
+    """Print every conversation in plain text (for CI logs)."""
+    meta = json.loads((Path(a.run) / "meta.json").read_text())
+    print(f"run {meta['name']} · cost {json.dumps(meta['cost'])}")
+    for r in load_rows(a.run):
+        v = r["verdict"]
+        print(f"\n== {r['scenario_id']} [{r['category']}/{r['persona']}] "
+              f"{'PASS' if v['passed'] else 'FAIL'} {', '.join(v['reasons'])}")
+        for t in r["turns"]:
+            ag, j = t["agent"], t["judge"]
+            print(f"  BUYER: {t['user']}")
+            print(f"  AGENT: {ag['reply'][:a.width]}")
+            print(f"    cites={ag['citations']} handoff={ag['handoff']} unknown={ag['unknown']} "
+                  f"parse_error={ag['parse_error']} invalid={ag['invalid_citations']}")
+            print(f"  JUDGE: grounded={j.get('grounded')} complete={j.get('completeness')} "
+                  f"handoff_ok={j.get('handoff_ok')} gap={j.get('gap')} claims={j.get('unsupported_claims')} "
+                  f"notes={str(j.get('notes'))[:a.width]}")
+    return 0
+
+
 def cmd_report(a):
     print(build_report(a.run))
     return 0
@@ -149,6 +169,8 @@ def build_parser():
     r.set_defaults(fn=cmd_run)
 
     ml = sub.add_parser("models", help="list models on Nebius Token Factory"); ml.set_defaults(fn=cmd_models)
+    sh = sub.add_parser("show", help="print every conversation"); sh.add_argument("run")
+    sh.add_argument("--width", type=int, default=600); sh.set_defaults(fn=cmd_show)
     s = sub.add_parser("report"); s.add_argument("run"); s.set_defaults(fn=cmd_report)
     d = sub.add_parser("diff"); d.add_argument("a"); d.add_argument("b"); d.set_defaults(fn=cmd_diff)
     sm = sub.add_parser("sample", help="pick turns for you to label by hand")
