@@ -37,6 +37,8 @@ Live runs on Nebius Token Factory: agent and buyer `Qwen/Qwen3-235B-A22B-Instruc
 | baseline | 14/30 (47%) | — |
 | fix-1 | 25/30 (83%) | Replay the agent's own turns as JSON; accept bracketed citation ids; no prices or estimates; no claims about competitors; separate Core from add-ons |
 | fix-2 | 29/30 (97%) | Never turn "not mentioned" into "not supported"; no claims past the sources; hand off on buying-critical gaps |
+| guard-1 | 24/30 (80%) | Pre-send guard added. Too strict: citation ids in prose and section-level numbers counted as violations; 10 safe fallbacks |
+| guard-2 | 27/30 (90%) | Guard false positives fixed. 3 of 47 drafts blocked, all real mis-citations; 2 sessions now fail the new uncited check |
 
 What the baseline caught before launch:
 
@@ -44,6 +46,15 @@ What the baseline caught before launch:
 - **Format drift.** On follow-up turns the agent dropped the required output format (16 of 30 sessions).
 - **A false "no" to procurement.** It said US-only hosting is "not supported" when the sources are silent, and did not hand off.
 - **Claims past the sources** about a competitor, country localization, a Workday integration, and "GDPR certification".
+
+How the guard works: the agent returns each fact with a verbatim quote from its source. Before a reply is sent,
+deterministic checks (no model tokens) verify that every quote exists in its cited section, every number is in a cited
+section or in the buyer's words, and risky words (certified, guaranteed, annual, SLA, free trial) appear in the quote that
+backs the claim. A failed draft gets one retry with the findings, then a safe handoff. Cost: one extra model call on 3 of
+47 replies in guard-2; the run cost did not change ($0.52 → $0.53).
+
+Why guard-2 scores below fix-2: the stricter checks are working. fix-2 passed answers whose facts were uncited; those now
+fail (`uncited`) instead of being trusted. Fewer passes, more trustworthy passes.
 
 Open items:
 
