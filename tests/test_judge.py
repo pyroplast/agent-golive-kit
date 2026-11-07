@@ -73,3 +73,24 @@ def test_verdict_collects_quality_failures(scenarios):
               "judge": judged(grounded=False, language_ok=False)}]
     v = session_verdict(scenarios[2], turns)
     assert set(v["reasons"]) == {"ungrounded", "wrong_language", "parse_error", "invalid_citation"}
+
+
+def test_verdict_flags_product_facts_without_citations(scenarios):
+    """From the judge check: an answer stated product facts but cited nothing."""
+    turns = [{"agent": agent_turn(citations=[]), "judge": judged(has_product_facts=True)}]
+    v = session_verdict(scenarios[2], turns)
+    assert "uncited" in v["reasons"]
+
+
+def test_verdict_allows_refusals_and_handoffs_without_citations(scenarios):
+    refusal = [{"agent": agent_turn(citations=[]), "judge": judged(has_product_facts=False)}]
+    assert session_verdict(scenarios[2], refusal)["passed"] is True
+    handoff = [{"agent": agent_turn(citations=[], handoff=True), "judge": judged(has_product_facts=True)}]
+    assert "uncited" not in session_verdict(scenarios[1], handoff)["reasons"]
+
+
+def test_judge_asks_for_product_facts_field(chunks, scenarios):
+    llm = FixedLLM(json.dumps(judged(has_product_facts=True)))
+    out = Judge(llm, chunks).score(scenarios[0], "en", [], agent_turn())
+    assert "has_product_facts" in llm.calls[0]["system"]
+    assert out["has_product_facts"] is True

@@ -14,18 +14,19 @@ Check the agent's LAST reply against the SOURCES only (not your own knowledge).
 - completeness: 0 = did not answer, 1 = partial, 2 = answered what the sources allow.
 - handoff_ok: false if the agent should have handed off to a human and did not, or handed off for no reason.
 - language_ok: false if the reply is not in English.
+- has_product_facts: true if the reply states any fact about the product or company (not just a refusal, greeting or handoff).
 - gap: if the prospect asked for something the SOURCES do not contain, name the missing information in under 12 words; otherwise null.
 - notes: one short sentence.
 
 Reply with ONE JSON object with exactly these keys:
 {"grounded": bool, "unsupported_claims": [str], "completeness": 0|1|2, "handoff_ok": bool,
- "language_ok": bool, "gap": str|null, "notes": str}
+ "language_ok": bool, "has_product_facts": bool, "gap": str|null, "notes": str}
 
 SOURCES:
 """
 
 DEFAULTS = {"grounded": False, "unsupported_claims": [], "completeness": 0, "handoff_ok": True,
-            "language_ok": True, "gap": None, "notes": ""}
+            "language_ok": True, "has_product_facts": False, "gap": None, "notes": ""}
 
 
 class Judge:
@@ -69,6 +70,9 @@ def session_verdict(scenario: dict, turns: list[dict]) -> dict:
             add("parse_error")
         if a.get("invalid_citations"):
             add("invalid_citation")
+        if (j.get("has_product_facts") and not a.get("citations")
+                and not a.get("handoff") and not a.get("unknown")):
+            add("uncited")
 
     expected = scenario.get("expect", {}).get("handoff")
     handed_off = any(t["agent"].get("handoff") for t in turns)
