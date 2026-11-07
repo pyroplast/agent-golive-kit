@@ -85,3 +85,21 @@ def test_diff_runs_finds_flips(tmp_path, run_dir):
     key = f'{rows[0]["scenario_id"]}:{rows[0]["lang"]}'
     assert key in d["fixed"] + d["broke"]
     assert len(d["fixed"]) + len(d["broke"]) == 1
+
+
+def test_summary_counts_guard_activity():
+    rows = [{"scenario_id": "a", "category": "expected", "persona": "cfo", "lang": "en",
+             "verdict": {"passed": True, "reasons": []},
+             "turns": [{"user": "q", "agent": {"reply": "r", "citations": [], "handoff": False, "unknown": False,
+                                                "guard": {"enabled": True, "retried": True, "fell_back": False,
+                                                          "first_problems": [{"type": "watch_word", "detail": "certif"}],
+                                                          "final_problems": []}},
+                        "judge": {"grounded": True}},
+                       {"user": "q2", "agent": {"reply": "r", "citations": [], "handoff": True, "unknown": False,
+                                                 "guard": {"enabled": True, "retried": True, "fell_back": True,
+                                                           "first_problems": [{"type": "number_not_in_source", "detail": "8"}],
+                                                           "final_problems": [{"type": "number_not_in_source", "detail": "8"}]}},
+                        "judge": {"grounded": True}}]}]
+    s = summarize(rows)
+    assert s["guard"] == {"turns_checked": 2, "retries": 2, "fallbacks": 1,
+                          "caught": {"watch_word": 1, "number_not_in_source": 1}}

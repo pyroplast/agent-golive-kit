@@ -54,7 +54,8 @@ def cmd_run(a):
             llm = OpenAICompatLLM(models)
     run_dir = run_suite(config, chunks, scenarios, llm, langs=a.langs.split(","),
                         max_turns=a.max_turns, out_dir=a.out, name=a.name, prices=prices,
-                        workers=a.workers, retrieval=a.retrieval, provider=a.provider)
+                        workers=a.workers, retrieval=a.retrieval, provider=a.provider,
+                        guard=not a.no_guard)
     report = build_report(run_dir)
     meta = json.loads((run_dir / "meta.json").read_text())
     rows = load_rows(run_dir)
@@ -99,6 +100,10 @@ def cmd_show(a):
             print(f"  AGENT: {ag['reply'][:a.width]}")
             print(f"    cites={ag['citations']} handoff={ag['handoff']} unknown={ag['unknown']} "
                   f"parse_error={ag['parse_error']} invalid={ag['invalid_citations']}")
+            g = ag.get("guard") or {}
+            if g.get("retried"):
+                print(f"    GUARD: blocked {[p['type'] + ':' + p['detail'] for p in g['first_problems']]}"
+                      f" -> {'fallback handoff' if g['fell_back'] else 'fixed on retry'}")
             print(f"  JUDGE: grounded={j.get('grounded')} complete={j.get('completeness')} "
                   f"handoff_ok={j.get('handoff_ok')} gap={j.get('gap')} claims={j.get('unsupported_claims')} "
                   f"notes={str(j.get('notes'))[:a.width]}")
@@ -165,6 +170,7 @@ def build_parser():
     r.add_argument("--models", default=str(ROOT / "config" / "models.json"))
     r.add_argument("--out", default=str(ROOT / "runs"))
     r.add_argument("--compare-to", help="earlier run dir to diff against")
+    r.add_argument("--no-guard", action="store_true", help="send drafts without the pre-send guard")
     r.add_argument("--publish-bucket", help="S3 bucket to upload the run to")
     r.set_defaults(fn=cmd_run)
 

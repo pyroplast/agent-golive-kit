@@ -34,10 +34,10 @@ def run_session(scenario, lang, agent, judge, buyer, max_turns):
 
 def run_suite(config, chunks, scenarios, llm, langs=("en",), max_turns=3,
               out_dir="runs", name=None, prices=None, workers=1, retrieval="full",
-              provider="mock") -> Path:
+              provider="mock", guard=True) -> Path:
     tracker = CostTracker(prices)
     tracked = TrackedLLM(llm, tracker)
-    agent = DemoAgent(config, chunks, tracked, retrieval=retrieval)
+    agent = DemoAgent(config, chunks, tracked, retrieval=retrieval, guard=guard)
     judge = Judge(tracked, chunks)
     buyer = Buyer(tracked, config)
 
@@ -57,7 +57,7 @@ def run_suite(config, chunks, scenarios, llm, langs=("en",), max_turns=3,
     ).hexdigest()[:12]
     meta = {"name": name, "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "provider": provider, "sessions": len(rows), "langs": list(langs),
-            "max_turns": max_turns, "retrieval": retrieval, "kb_chunks": len(chunks),
+            "max_turns": max_turns, "retrieval": retrieval, "guard": guard, "kb_chunks": len(chunks),
             "config_fingerprint": fingerprint, "cost": tracker.summary()}
     (run_dir / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     return run_dir

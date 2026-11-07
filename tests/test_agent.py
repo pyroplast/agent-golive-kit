@@ -51,7 +51,7 @@ def test_agent_filters_unknown_citations(config, chunks):
 
 
 def test_agent_survives_bad_json(config, chunks):
-    turn = DemoAgent(config, chunks, FixedLLM("I am not JSON")).respond(
+    turn = DemoAgent(config, chunks, FixedLLM("I am not JSON"), guard=False).respond(
         [{"role": "user", "content": "x"}], lang="en")
     assert turn["parse_error"] is True
     assert turn["reply"] == "I am not JSON"
@@ -92,3 +92,63 @@ def test_agent_accepts_bracketed_citation_ids(config, chunks):
     turn = DemoAgent(config, chunks, llm).respond([{"role": "user", "content": "q"}], lang="en")
     assert turn["citations"] == ["security#2", "pricing#1"]
     assert turn["invalid_citations"] == []
+
+
+class SeqLLM:
+    """Returns canned texts in order and records every call."""
+
+    def __init__(self, *texts):
+        self.texts, self.calls = list(texts), []
+
+    def complete(self, role, system, messages, meta=None):
+        self.calls.append({"role": role, "system": system, "messages": messages})
+        return LLMResponse(self.texts[min(len(self.calls), len(self.texts)) - 1], 10, 5, "seq")
+
+
+BAD = json.dumps({"reply": "Pricing starts at $8-12 per employee.", "claims": [
+    {"text": "Pricing starts at $8-12", "source": "pricing#1", "quote": "Pricing is quote-based"}],
+    "handoff": False, "handoff_reason": None, "unknown": False, "qualification": {}})
+GOOD = json.dumps({"reply": "Pricing is quote-based and calculated per employee.", "claims": [
+    {"text": "Pricing is quote-based", "source": "pricing#1", "quote": "Pricing is quote-based and calculated per employee"}],
+    "handoff": False, "handoff_reason": None, "unknown": False, "qualification": {}})
+
+
+def test_guard_retries_once_with_findings_then_sends_the_fixed_reply(config, chunks):
+    llm = SeqLLM(BAD, GOOD)
+    turn = DemoAgent(config, chunks, llm).respond([{"role": "user", "content": "ballpark?"}], lang="en")
+    assert len(llm.calls) == 2
+    assert "number_not_in_source" in llm.calls[1]["messages"][-1]["content"]
+    assert turn["reply"].startswith("Pricing is quote-based")
+    assert turn["guard"]["retried"] is True and turn["guard"]["fell_back"] is False
+    assert turn["guard"]["first_problems"] and turn["guard"]["final_problems"] == []
+    assert turn["citations"] == ["pricing#1"]
+
+
+def test_guard_falls_back_to_a_safe_handoff_after_two_failures(config, chunks):
+    llm = SeqLLM(BAD, BAD)
+    turn = DemoAgent(config, chunks, llm).respond([{"role": "user", "content": "ballpark?"}], lang="en")
+    assert len(llm.calls) == 2
+    assert turn["handoff"] is True and turn["guard"]["fell_back"] is True
+    assert "$" not in turn["reply"]
+    assert turn["handoff_reason"] == "guard: could not verify the answer"
+
+
+def test_guard_can_be_switched_off(config, chunks):
+    llm = SeqLLM(BAD)
+    turn = DemoAgent(config, chunks, llm, guard=False).respond([{"role": "user", "content": "x"}], lang="en")
+    assert len(llm.calls) == 1 and "$8-12" in turn["reply"]
+    assert turn["guard"] == {"enabled": False}
+
+
+def test_agent_prompt_asks_for_quoted_claims(config, chunks):
+    llm = SeqLLM(GOOD)
+    DemoAgent(config, chunks, llm).respond([{"role": "user", "content": "x"}], lang="en")
+    assert '"quote"' in llm.calls[0]["system"]
+
+
+def test_guard_treats_malformed_output_as_a_failure(config, chunks):
+    llm = SeqLLM("I am not JSON", "still not JSON")
+    turn = DemoAgent(config, chunks, llm).respond([{"role": "user", "content": "x"}], lang="en")
+    assert len(llm.calls) == 2 and turn["guard"]["fell_back"] is True
+    assert turn["guard"]["first_problems"][0]["type"] == "parse_error"
+    assert turn["handoff"] is True and turn["parse_error"] is False

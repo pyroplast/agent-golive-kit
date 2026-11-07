@@ -3,15 +3,30 @@ from __future__ import annotations
 
 import json
 
+from deploykit.guard import check_reply
 from deploykit.kb import BM25Index, Chunk, format_kb
 
 OUTPUT_SPEC = """Reply with ONE JSON object and nothing else:
 {"reply": "<what you say to the prospect>",
- "citations": ["<chunk id you relied on>", ...],
+ "claims": [{"text": "<one fact you state in the reply>",
+             "source": "<chunk id it comes from>",
+             "quote": "<the exact words from that chunk that support it, copied verbatim>"}],
  "handoff": <true if a human Account Executive should take over>,
  "handoff_reason": "<short reason or null>",
  "unknown": <true if the sources do not answer the question>,
- "qualification": {"<field>": "<value the prospect revealed>"}}"""
+ "qualification": {"<field>": "<value the prospect revealed>"}}
+Every fact in "reply" must appear as a claim with a verbatim quote. A fact you cannot quote must not be in the reply.
+Before sending, an automatic check compares every number and words like "certified", "guaranteed" or "annual"
+against your quotes; anything not in a quote is blocked."""
+
+GUARD_RETRY = """AUTOMATIC CHECK: your draft was blocked before it reached the prospect.
+Problems: {problems}
+Rewrite the reply. Keep only facts you can quote word for word from the sources, quote them exactly,
+and remove any number or wording that is not in a quote. If you cannot support the answer, say so and hand off.
+Reply with the JSON object only."""
+
+FALLBACK_REPLY = ("I want to give you an exact answer on that, so I'll connect you with an Account Executive "
+                  "who can confirm the details.")
 
 
 def parse_json(text: str) -> dict:
@@ -50,8 +65,9 @@ SOURCES (cite by the id in square brackets):
 
 
 class DemoAgent:
-    def __init__(self, config: dict, chunks: list[Chunk], llm, retrieval: str = "full", k: int = 6):
-        self.config, self.chunks, self.llm = config, chunks, llm
+    def __init__(self, config: dict, chunks: list[Chunk], llm, retrieval: str = "full", k: int = 6,
+                 guard: bool = True):
+        self.config, self.chunks, self.llm, self.guard = config, chunks, llm, guard
         self.retrieval, self.k = retrieval, k
         self.ids = {c.id for c in chunks}
         self.index = BM25Index(chunks) if retrieval == "bm25" else None
@@ -62,6 +78,40 @@ class DemoAgent:
         query = " ".join(m["content"] for m in history if m["role"] == "user")
         return [c for c, _ in self.index.search(query, self.k)] or self.chunks[: self.k]
 
+    def _parse(self, text: str) -> tuple[dict, bool]:
+        try:
+            return parse_json(text), False
+        except ValueError:
+            return {"reply": text.strip()}, True
+
+    def _to_turn(self, data: dict, parse_error: bool) -> dict:
+        def clean(c):
+            return c.strip().strip("[]").strip()
+        claims = [c for c in data.get("claims") or [] if isinstance(c, dict)]
+        cites = [clean(c) for c in data.get("citations") or [] if isinstance(c, str)]
+        cites += [clean(str(c.get("source", ""))) for c in claims if c.get("source")]
+        seen, ordered = set(), []
+        for c in cites:
+            if c and c not in seen:
+                seen.add(c)
+                ordered.append(c)
+        return {
+            "reply": str(data.get("reply", "")),
+            "claims": claims,
+            "citations": [c for c in ordered if c in self.ids],
+            "invalid_citations": [c for c in ordered if c not in self.ids],
+            "handoff": bool(data.get("handoff", False)),
+            "handoff_reason": data.get("handoff_reason"),
+            "unknown": bool(data.get("unknown", False)),
+            "qualification": data.get("qualification") or {},
+            "parse_error": parse_error,
+        }
+
+    def _check(self, turn: dict, user_text: str) -> list[dict]:
+        if turn["parse_error"]:
+            return [{"type": "parse_error", "detail": "output was not the JSON object"}]
+        return check_reply(turn, self.chunks, user_text)["problems"]
+
     def respond(self, history: list[dict], lang: str) -> dict:
         sources = self.sources_for(history)
         system = build_system_prompt(self.config, sources)
@@ -69,20 +119,28 @@ class DemoAgent:
         # With plain-text history the model drifted out of the format on follow-up turns.
         replay = [{"role": m["role"], "content": json.dumps({"reply": m["content"]}, ensure_ascii=False)}
                   if m["role"] == "assistant" else m for m in history]
-        r = self.llm.complete("agent", system, replay, meta={"chunks": sources, "lang": lang})
-        try:
-            data = parse_json(r.text)
-            parse_error = False
-        except ValueError:
-            data, parse_error = {"reply": r.text.strip()}, True
-        cites = [c.strip().strip("[]").strip() for c in data.get("citations") or [] if isinstance(c, str)]
-        return {
-            "reply": str(data.get("reply", "")),
-            "citations": [c for c in cites if c in self.ids],
-            "invalid_citations": [c for c in cites if c not in self.ids],
-            "handoff": bool(data.get("handoff", False)),
-            "handoff_reason": data.get("handoff_reason"),
-            "unknown": bool(data.get("unknown", False)),
-            "qualification": data.get("qualification") or {},
-            "parse_error": parse_error,
-        }
+        meta = {"chunks": sources, "lang": lang}
+        r = self.llm.complete("agent", system, replay, meta=meta)
+        turn = self._to_turn(*self._parse(r.text))
+        if not self.guard:
+            turn["guard"] = {"enabled": False}
+            return turn
+
+        user_text = " ".join(m["content"] for m in history if m["role"] == "user")
+        first = self._check(turn, user_text)
+        final, retried, fell_back = first, False, False
+        if first:
+            retried = True
+            feedback = "; ".join(f"{p['type']}: {p['detail']}" for p in first)
+            retry_msgs = replay + [{"role": "assistant", "content": r.text},
+                                   {"role": "user", "content": GUARD_RETRY.format(problems=feedback)}]
+            r2 = self.llm.complete("agent", system, retry_msgs, meta=meta)
+            turn = self._to_turn(*self._parse(r2.text))
+            final = self._check(turn, user_text)
+            if final:
+                fell_back = True
+                turn = {**self._to_turn({}, False), "reply": FALLBACK_REPLY, "handoff": True,
+                        "handoff_reason": "guard: could not verify the answer"}
+        turn["guard"] = {"enabled": True, "retried": retried, "fell_back": fell_back,
+                         "first_problems": first, "final_problems": final}
+        return turn

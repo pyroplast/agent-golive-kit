@@ -49,7 +49,8 @@ class MockLLM:
             hits = BM25Index(meta.get("chunks", [])).search(last, k=1)
             if hits:
                 c = hits[0][0]
-                out = {"reply": c.text.split(". ")[0].strip(), "citations": [c.id],
+                first = c.text.split(". ")[0].strip()
+                out = {"reply": first, "claims": [{"text": first, "source": c.id, "quote": first}],
                        "handoff": False, "handoff_reason": None, "unknown": False,
                        "qualification": {}}
             else:

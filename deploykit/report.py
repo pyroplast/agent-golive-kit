@@ -35,7 +35,12 @@ def summarize(rows: list[dict]) -> dict:
             risky.append({"scenario": r["scenario_id"], "lang": r["lang"], "question": t["user"],
                           "reply": t["agent"]["reply"],
                           "claims": t["judge"].get("unsupported_claims", [])})
+    guarded = [t["agent"].get("guard") for _, t in turns if (t["agent"].get("guard") or {}).get("enabled")]
+    caught = Counter(kind for g in guarded for kind in {p["type"] for p in g.get("first_problems", [])})
+    guard = {"turns_checked": len(guarded), "retries": sum(bool(g.get("retried")) for g in guarded),
+             "fallbacks": sum(bool(g.get("fell_back")) for g in guarded), "caught": dict(caught)}
     return {
+        "guard": guard,
         "sessions": len(rows),
         "passed": sum(r["verdict"]["passed"] for r in rows),
         "pass_rate": _rate(rows),
@@ -146,7 +151,9 @@ LABELS = {"hr_lead": "HR lead", "cfo": "CFO", "it_admin": "IT admin",
           "ungrounded": "Not backed by sources", "missed_handoff": "Missed handoff",
           "unnecessary_handoff": "Unnecessary handoff", "wrong_language": "Wrong language",
           "parse_error": "Malformed agent output", "invalid_citation": "Cited a source that doesn't exist",
-          "judge_error": "Judge output unreadable", "uncited": "Facts without a cited source", "bad_handoff": "Questionable handoff"}
+          "judge_error": "Judge output unreadable", "number_not_in_source": "Number not in a quoted source",
+          "watch_word": "Risky wording not in a quote", "quote_not_found": "Quote not found in its source",
+          "unknown_source": "Cited a source that doesn't exist", "uncited": "Facts without a cited source", "bad_handoff": "Questionable handoff"}
 
 
 def _label(k):
@@ -230,6 +237,12 @@ def build_report(run_dir) -> Path:
         f"<div class='kpi'><div class='label'>Run cost</div><div class='value serif'>{cost_value}</div>"
         f"<div class='note'>{escape(cost_note)}</div></div></div>",
         _section("01", "Results by group", "Where the agent is ready and where it isn't.", groups),
+        _section("01b", "Pre-send guard", "Drafts blocked before the buyer saw them, by deterministic checks (no model tokens).",
+                 (f"<p>{s['guard']['turns_checked']} replies checked · {s['guard']['retries']} blocked and retried · "
+                  f"{s['guard']['fallbacks']} replaced by a safe handoff.</p>"
+                  + (_table(["Caught", "Replies"], [[_label(k), v] for k, v in s['guard']['caught'].items()], numeric=(1,))
+                     if s['guard']['caught'] else "<p class='empty'>Nothing blocked.</p>"))
+                 if s["guard"]["turns_checked"] else "<p class='empty'>Guard was off for this run.</p>"),
         _section("02", "Why sessions failed", "Each failed session can have several reasons.", reasons),
         _section("03", "Knowledge gaps", "Questions the sources could not answer. Each one is a doc to write or a handoff rule to add.", gaps),
         _section("04", "Risky answers", "Replies the judge could not back with the sources. Fix these before launch.", risky),
