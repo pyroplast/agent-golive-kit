@@ -74,8 +74,14 @@ def cmd_run(a):
 def cmd_models(a):
     if not os.environ.get("NEBIUS_API_KEY"):
         sys.exit("Set NEBIUS_API_KEY")
-    for m in OpenAICompatLLM({}).list_models():
-        print(m)
+    import urllib.request
+    from deploykit.llm import NEBIUS_BASE_URL
+    req = urllib.request.Request(NEBIUS_BASE_URL + "models?verbose=true",
+                                 headers={"Authorization": f"Bearer {os.environ['NEBIUS_API_KEY']}"})
+    data = json.loads(urllib.request.urlopen(req, timeout=30).read())["data"]
+    for m in sorted(data, key=lambda x: x["id"]):
+        p = m.get("pricing") or {}
+        print(f"{m['id']}\tin={p.get('prompt')}\tout={p.get('completion')}")
     return 0
 
 

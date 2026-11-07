@@ -10,9 +10,9 @@
     "judge": "REPLACE_WITH_BEDROCK_INFERENCE_PROFILE_ID_FOR_SONNET"
   },
   "nebius": {
-    "agent": "REPLACE_WITH_NEBIUS_MODEL_ID",
-    "buyer": "REPLACE_WITH_NEBIUS_MODEL_ID",
-    "judge": "REPLACE_WITH_NEBIUS_MODEL_ID"
+    "agent": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+    "buyer": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+    "judge": "deepseek-ai/DeepSeek-V4-Pro"
   },
   "bedrock_region": "eu-west-1",
   "prices_usd_per_million_tokens": {
