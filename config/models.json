@@ -9,9 +9,17 @@
     "buyer": "REPLACE_WITH_BEDROCK_INFERENCE_PROFILE_ID_FOR_HAIKU",
     "judge": "REPLACE_WITH_BEDROCK_INFERENCE_PROFILE_ID_FOR_SONNET"
   },
+  "nebius": {
+    "agent": "REPLACE_WITH_NEBIUS_MODEL_ID",
+    "buyer": "REPLACE_WITH_NEBIUS_MODEL_ID",
+    "judge": "REPLACE_WITH_NEBIUS_MODEL_ID"
+  },
   "bedrock_region": "eu-west-1",
   "prices_usd_per_million_tokens": {
     "_note": "Fill in from the current Anthropic / Bedrock pricing pages before a live run. Unpriced models are flagged in the report.",
-    "example-model-id": {"input": 0.0, "output": 0.0}
+    "example-model-id": {
+      "input": 0.0,
+      "output": 0.0
+    }
   }
 }

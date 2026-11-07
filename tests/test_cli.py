@@ -67,3 +67,11 @@ def test_model_ids_can_come_from_env(tmp_path, monkeypatch):
         monkeypatch.setenv(f"MODEL_{role}", f"eu.anthropic.{role.lower()}")
     m, _, _ = _models(models, "bedrock")
     assert m == {"agent": "eu.anthropic.agent", "judge": "eu.anthropic.judge", "buyer": "eu.anthropic.buyer"}
+
+
+def test_nebius_requires_api_key(tmp_path, monkeypatch):
+    monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
+    for role in ("AGENT", "JUDGE", "BUYER"):
+        monkeypatch.setenv(f"MODEL_{role}", "some/model")
+    with pytest.raises(SystemExit):
+        main(run_args(tmp_path, extra=["--provider", "nebius"]))

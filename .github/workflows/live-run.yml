@@ -1,12 +1,17 @@
 name: live run
 
-# Runs the suite on Amazon Bedrock. Needs repository variables:
-#   AWS_ROLE_ARN   (output of the GitHubAccess stack)
-#   MODEL_AGENT, MODEL_JUDGE, MODEL_BUYER   (Bedrock inference profile ids)
-#   REPORT_BUCKET  (optional: output of the HiBobDeployKit stack; enables publish + diff vs last run)
+# Runs the suite against real models.
+#   nebius:  secret NEBIUS_API_KEY; variables MODEL_AGENT, MODEL_JUDGE, MODEL_BUYER (Token Factory model ids)
+#   bedrock: variables AWS_ROLE_ARN, MODEL_AGENT, MODEL_JUDGE, MODEL_BUYER (Bedrock inference profile ids);
+#            optional REPORT_BUCKET to publish and diff against the last published run
 on:
   workflow_dispatch:
     inputs:
+      provider:
+        description: Model provider
+        type: choice
+        options: [nebius, bedrock]
+        default: nebius
       name:
         description: Run name
         required: true
@@ -14,10 +19,14 @@ on:
       limit:
         description: Only the first N scenarios (empty = all)
         required: false
+      compare_to:
+        description: Name of an earlier run of this workflow to diff against (optional)
+        required: false
 
 permissions:
   id-token: write
   contents: read
+  actions: read
 
 jobs:
   run:
@@ -27,6 +36,7 @@ jobs:
       MODEL_AGENT: ${{ vars.MODEL_AGENT }}
       MODEL_JUDGE: ${{ vars.MODEL_JUDGE }}
       MODEL_BUYER: ${{ vars.MODEL_BUYER }}
+      NEBIUS_API_KEY: ${{ secrets.NEBIUS_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -34,22 +44,36 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
-      - uses: aws-actions/configure-aws-credentials@v4
+
+      - name: AWS login (bedrock only)
+        if: ${{ inputs.provider == 'bedrock' }}
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: eu-west-1
-      - name: Run and publish (bucket configured)
-        if: ${{ vars.REPORT_BUCKET != '' && inputs.limit == '' }}
-        env:
-          REPORT_BUCKET: ${{ vars.REPORT_BUCKET }}
-          RUN_NAME: ${{ inputs.name }}
-          WORKDIR: ${{ github.workspace }}/work
-        run: python -m deploykit.job
-      - name: Run only (no bucket, or a limited smoke test)
-        if: ${{ vars.REPORT_BUCKET == '' || inputs.limit != '' }}
+
+      - name: Fetch the earlier run to compare against
+        if: ${{ inputs.compare_to != '' }}
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: live-run.yml
+          name: run-${{ inputs.compare_to }}
+          path: work/runs/${{ inputs.compare_to }}
+          if_no_artifact_found: warn
+
+      - name: Run the suite
         run: |
-          python -m deploykit run --provider bedrock --name "${{ inputs.name }}" \
-            --out work/runs ${{ inputs.limit && format('--limit {0}', inputs.limit) || '' }}
+          ARGS="--provider ${{ inputs.provider }} --name ${{ inputs.name }} --out work/runs --workers 4"
+          if [ -n "${{ inputs.limit }}" ]; then ARGS="$ARGS --limit ${{ inputs.limit }}"; fi
+          if [ -n "${{ inputs.compare_to }}" ] && [ -f "work/runs/${{ inputs.compare_to }}/results.jsonl" ]; then
+            ARGS="$ARGS --compare-to work/runs/${{ inputs.compare_to }}"
+          fi
+          python -m deploykit run $ARGS
+
+      - name: Publish to S3 (bedrock with REPORT_BUCKET only)
+        if: ${{ inputs.provider == 'bedrock' && vars.REPORT_BUCKET != '' }}
+        run: python -c "from deploykit.publish import publish_run; print(publish_run('work/runs/${{ inputs.name }}', '${{ vars.REPORT_BUCKET }}'))"
+
       - uses: actions/upload-artifact@v4
         with:
           name: run-${{ inputs.name }}

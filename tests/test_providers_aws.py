@@ -71,3 +71,52 @@ def test_publish_run_uploads_files_and_latest(tmp_path):
     html_put = next(p for p in s3.puts if p["Key"] == "latest/report.html")
     assert html_put["ContentType"] == "text/html; charset=utf-8"
     assert all(p["Bucket"] == "bucket" for p in s3.puts)
+
+
+class FakeOpenAI:
+    """Mimics the openai SDK client shape used by OpenAICompatLLM."""
+
+    def __init__(self, text="ok"):
+        self.kwargs = None
+        outer = self
+
+        class Completions:
+            def create(self, **kw):
+                outer.kwargs = kw
+                msg = type("M", (), {"content": text})()
+                choice = type("C", (), {"message": msg})()
+                usage = type("U", (), {"prompt_tokens": 20, "completion_tokens": 4})()
+                return type("R", (), {"choices": [choice], "usage": usage})()
+
+        class Chat:
+            completions = Completions()
+
+        class Models:
+            def list(self):
+                return type("L", (), {"data": [type("D", (), {"id": "qwen/x"})(), type("D", (), {"id": "openai/gpt-oss-120b"})()]})()
+
+        self.chat = Chat()
+        self.models = Models()
+
+
+def test_openai_compat_puts_system_first_and_reads_usage():
+    from deploykit.llm import OpenAICompatLLM
+    fake = FakeOpenAI("hello")
+    llm = OpenAICompatLLM({"agent": "openai/gpt-oss-120b"}, client=fake)
+    r = llm.complete("agent", "SYS", [{"role": "user", "content": "hi"}])
+    assert r.text == "hello" and r.input_tokens == 20 and r.output_tokens == 4
+    assert r.model == "openai/gpt-oss-120b"
+    assert fake.kwargs["messages"][0] == {"role": "system", "content": "SYS"}
+    assert fake.kwargs["messages"][1] == {"role": "user", "content": "hi"}
+    assert fake.kwargs["temperature"] == 0
+
+
+def test_openai_compat_handles_empty_content():
+    from deploykit.llm import OpenAICompatLLM
+    r = OpenAICompatLLM({"agent": "m"}, client=FakeOpenAI(None)).complete("agent", "S", [{"role": "user", "content": "x"}])
+    assert r.text == ""
+
+
+def test_list_models():
+    from deploykit.llm import OpenAICompatLLM
+    assert OpenAICompatLLM({}, client=FakeOpenAI()).list_models() == ["openai/gpt-oss-120b", "qwen/x"]

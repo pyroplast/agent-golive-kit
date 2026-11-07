@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 from deploykit.kb import load_kb
-from deploykit.llm import AnthropicLLM, BedrockLLM, MockLLM
+from deploykit.llm import AnthropicLLM, BedrockLLM, MockLLM, OpenAICompatLLM
 from deploykit.report import build_report, load_rows, write_diff_md
 from deploykit.runner import run_suite
 from deploykit.scenarios import load_scenarios, validate_scenarios
@@ -44,8 +44,14 @@ def cmd_run(a):
         llm = MockLLM()
     else:
         models, prices, region = _models(a.models, a.provider)
-        llm = AnthropicLLM(models) if a.provider == "anthropic" else \
-            BedrockLLM(models, region=os.environ.get("AWS_REGION", region))
+        if a.provider == "anthropic":
+            llm = AnthropicLLM(models)
+        elif a.provider == "bedrock":
+            llm = BedrockLLM(models, region=os.environ.get("AWS_REGION", region))
+        else:
+            if not os.environ.get("NEBIUS_API_KEY"):
+                sys.exit("Set NEBIUS_API_KEY to use the nebius provider")
+            llm = OpenAICompatLLM(models)
     run_dir = run_suite(config, chunks, scenarios, llm, langs=a.langs.split(","),
                         max_turns=a.max_turns, out_dir=a.out, name=a.name, prices=prices,
                         workers=a.workers, retrieval=a.retrieval, provider=a.provider)
@@ -62,6 +68,14 @@ def cmd_run(a):
         from deploykit.publish import publish_run
         keys = publish_run(run_dir, a.publish_bucket)
         print(f"published {len(keys)} files to s3://{a.publish_bucket}")
+    return 0
+
+
+def cmd_models(a):
+    if not os.environ.get("NEBIUS_API_KEY"):
+        sys.exit("Set NEBIUS_API_KEY")
+    for m in OpenAICompatLLM({}).list_models():
+        print(m)
     return 0
 
 
@@ -112,7 +126,7 @@ def build_parser():
     sub = p.add_subparsers(dest="cmd", required=True)
 
     r = sub.add_parser("run", help="run the suite")
-    r.add_argument("--provider", choices=["mock", "anthropic", "bedrock"], default="mock")
+    r.add_argument("--provider", choices=["mock", "anthropic", "bedrock", "nebius"], default="mock")
     r.add_argument("--name")
     r.add_argument("--langs", default="en")
     r.add_argument("--max-turns", type=int, default=3)
@@ -128,6 +142,7 @@ def build_parser():
     r.add_argument("--publish-bucket", help="S3 bucket to upload the run to")
     r.set_defaults(fn=cmd_run)
 
+    ml = sub.add_parser("models", help="list models on Nebius Token Factory"); ml.set_defaults(fn=cmd_models)
     s = sub.add_parser("report"); s.add_argument("run"); s.set_defaults(fn=cmd_report)
     d = sub.add_parser("diff"); d.add_argument("a"); d.add_argument("b"); d.set_defaults(fn=cmd_diff)
     sm = sub.add_parser("sample", help="pick turns for you to label by hand")

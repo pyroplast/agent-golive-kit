@@ -39,6 +39,16 @@ The mock provider is a keyword matcher. It tests the plumbing; its scores mean n
 
 ## Live run
 
+Nebius Token Factory (open-weight models, OpenAI-compatible API):
+
+```bash
+export NEBIUS_API_KEY=...
+python -m deploykit models                       # list available model ids
+export MODEL_AGENT=... MODEL_BUYER=... MODEL_JUDGE=...
+python -m deploykit run --provider nebius --name baseline --limit 3   # smoke test
+python -m deploykit run --provider nebius --name baseline
+```
+
 Anthropic API:
 
 ```bash
@@ -92,7 +102,8 @@ Then in the repo's Settings → Secrets and variables → Actions → Variables,
 
 - **tests**: runs on every push.
 - **deploy**: deploys the report site and nightly job; add its bucket output as `REPORT_BUCKET`.
-- **live run**: runs the suite on Bedrock on demand; with `REPORT_BUCKET` set it publishes and
+- **list models**: prints the Nebius model ids your key can use.
+- **live run**: runs the suite on Nebius or Bedrock on demand; `compare_to` diffs against an earlier run; with `REPORT_BUCKET` set it publishes and
   diffs against the previous run. The report is attached to the workflow run.
 
 ## Layout

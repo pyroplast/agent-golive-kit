@@ -1,0 +1,21 @@
+name: list models
+
+# Prints the model ids available on Nebius Token Factory for this key.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    env:
+      NEBIUS_API_KEY: ${{ secrets.NEBIUS_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python -m deploykit models

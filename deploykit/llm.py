@@ -113,6 +113,40 @@ class BedrockLLM:
         return LLMResponse(text, u.get("inputTokens", 0), u.get("outputTokens", 0), model)
 
 
+NEBIUS_BASE_URL = "https://api.tokenfactory.nebius.com/v1/"
+
+
+class OpenAICompatLLM:
+    """Any OpenAI-compatible endpoint. Default: Nebius Token Factory (open-weight models)."""
+
+    def __init__(self, models: dict, client=None, base_url: str = NEBIUS_BASE_URL,
+                 api_key_env: str = "NEBIUS_API_KEY", token_multiplier: int = 3):
+        self.models = models
+        # Reasoning models spend part of max_tokens thinking, so give them headroom.
+        self.token_multiplier = token_multiplier
+        if client is None:
+            import os
+
+            from openai import OpenAI
+            client = OpenAI(base_url=base_url, api_key=os.environ[api_key_env])
+        self.client = client
+
+    def complete(self, role, system, messages, meta=None):
+        model = self.models[role]
+        r = self.client.chat.completions.create(
+            model=model, temperature=0,
+            max_tokens=MAX_TOKENS.get(role, 800) * self.token_multiplier,
+            messages=[{"role": "system", "content": system}, *messages],
+        )
+        text = r.choices[0].message.content or ""
+        u = r.usage
+        return LLMResponse(text, getattr(u, "prompt_tokens", 0) or 0,
+                           getattr(u, "completion_tokens", 0) or 0, model)
+
+    def list_models(self) -> list[str]:
+        return sorted(m.id for m in self.client.models.list().data)
+
+
 class CostTracker:
     """Adds up tokens per role. Prices are USD per million tokens, per model."""
 
