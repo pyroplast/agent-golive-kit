@@ -104,6 +104,7 @@ def cmd_show(a):
             if g.get("retried"):
                 print(f"    GUARD: blocked {[p['type'] + ':' + p['detail'] for p in g['first_problems']]}"
                       f" -> {'fallback handoff' if g['fell_back'] else 'fixed on retry'}")
+                print(f"    BLOCKED DRAFT: {str(g.get('blocked_draft'))[:a.width]}")
             print(f"  JUDGE: grounded={j.get('grounded')} complete={j.get('completeness')} "
                   f"handoff_ok={j.get('handoff_ok')} gap={j.get('gap')} claims={j.get('unsupported_claims')} "
                   f"notes={str(j.get('notes'))[:a.width]}")

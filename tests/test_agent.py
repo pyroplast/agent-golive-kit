@@ -152,3 +152,8 @@ def test_guard_treats_malformed_output_as_a_failure(config, chunks):
     assert len(llm.calls) == 2 and turn["guard"]["fell_back"] is True
     assert turn["guard"]["first_problems"][0]["type"] == "parse_error"
     assert turn["handoff"] is True and turn["parse_error"] is False
+
+
+def test_guard_keeps_the_blocked_draft_for_diagnosis(config, chunks):
+    turn = DemoAgent(config, chunks, SeqLLM(BAD, GOOD)).respond([{"role": "user", "content": "x"}], lang="en")
+    assert "$8-12" in turn["guard"]["blocked_draft"]

@@ -128,9 +128,10 @@ class DemoAgent:
 
         user_text = " ".join(m["content"] for m in history if m["role"] == "user")
         first = self._check(turn, user_text)
-        final, retried, fell_back = first, False, False
+        final, retried, fell_back, blocked_draft = first, False, False, None
         if first:
             retried = True
+            blocked_draft = turn["reply"]
             feedback = "; ".join(f"{p['type']}: {p['detail']}" for p in first)
             retry_msgs = replay + [{"role": "assistant", "content": r.text},
                                    {"role": "user", "content": GUARD_RETRY.format(problems=feedback)}]
@@ -142,5 +143,6 @@ class DemoAgent:
                 turn = {**self._to_turn({}, False), "reply": FALLBACK_REPLY, "handoff": True,
                         "handoff_reason": "guard: could not verify the answer"}
         turn["guard"] = {"enabled": True, "retried": retried, "fell_back": fell_back,
-                         "first_problems": first, "final_problems": final}
+                         "first_problems": first, "final_problems": final,
+                         "blocked_draft": blocked_draft}
         return turn

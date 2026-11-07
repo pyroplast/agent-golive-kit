@@ -100,3 +100,38 @@ def test_reply_text_outside_claims_is_still_checked(chunks):
 def test_clean_handoff_passes(chunks):
     d = draft("I'll connect you with an Account Executive for that.", handoff=True)
     assert check_reply(d, chunks, user_text="Give me a 40% discount")["ok"]
+
+
+# --- false positives seen in live run guard-1 ------------------------------
+
+def test_citation_markup_is_not_content(chunks):
+    """guard-1: the agent wrote ids like '(security#2)' into the reply; '2' is not a claim."""
+    d = draft("Hosted on AWS (security#2) [security#1].",
+              [claim("Hosted on AWS [security#2]", "security#2", "Hosted on AWS")])
+    assert check_reply(d, chunks, user_text="")["ok"]
+
+
+def test_numbers_anywhere_in_a_cited_section_are_allowed(chunks):
+    """guard-1: '1,000+' was in the cited section but outside the quoted words."""
+    d = draft("Routine SOC 2 Type II audits, and ISO 27001.",
+              [claim("SOC 2 Type II audits and ISO 27001", "security#1", "SOC 2 Type II audits")])
+    assert check_reply(d, chunks, user_text="")["ok"]
+
+
+def test_numbers_from_uncited_sections_are_still_blocked(chunks):
+    d = draft("Pricing is per employee and starts at 27001 euros.",
+              [claim("Pricing is per employee", "pricing#1", "calculated per employee")])
+    assert "number_not_in_source" in problem_types(check_reply(d, chunks, user_text=""))
+
+
+def test_quote_may_be_the_section_heading(chunks):
+    """guard-1: the agent quoted the heading 'Time & Attendance (add-on)'."""
+    d = draft("HiBob lists certifications.", [claim("HiBob lists certifications", "security#1", "Certifications")])
+    assert check_reply(d, chunks, user_text="")["ok"]
+
+
+def test_watch_words_stay_quote_level_even_if_the_section_has_them(chunks):
+    """security#1 contains 'certified', so only the quote-level check catches 'HIPAA certifications'."""
+    d = draft("HiBob holds HIPAA certifications.",
+              [claim("HiBob holds HIPAA certifications", "security#1", "SOC 2 Type II audits")])
+    assert "watch_word" in problem_types(check_reply(d, chunks, user_text=""))
