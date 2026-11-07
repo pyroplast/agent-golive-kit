@@ -65,13 +65,17 @@ class DemoAgent:
     def respond(self, history: list[dict], lang: str) -> dict:
         sources = self.sources_for(history)
         system = build_system_prompt(self.config, sources)
-        r = self.llm.complete("agent", system, history, meta={"chunks": sources, "lang": lang})
+        # Replay the agent's own earlier turns in the JSON shape it must keep producing.
+        # With plain-text history the model drifted out of the format on follow-up turns.
+        replay = [{"role": m["role"], "content": json.dumps({"reply": m["content"]}, ensure_ascii=False)}
+                  if m["role"] == "assistant" else m for m in history]
+        r = self.llm.complete("agent", system, replay, meta={"chunks": sources, "lang": lang})
         try:
             data = parse_json(r.text)
             parse_error = False
         except ValueError:
             data, parse_error = {"reply": r.text.strip()}, True
-        cites = [c for c in data.get("citations") or [] if isinstance(c, str)]
+        cites = [c.strip().strip("[]").strip() for c in data.get("citations") or [] if isinstance(c, str)]
         return {
             "reply": str(data.get("reply", "")),
             "citations": [c for c in cites if c in self.ids],

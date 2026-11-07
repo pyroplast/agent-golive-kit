@@ -69,3 +69,26 @@ def test_mock_agent_cites_relevant_chunk(config, chunks):
         [{"role": "user", "content": "Which AWS region hosts the data?"}], lang="en")
     assert turn["citations"] == ["security#2"]
     assert turn["unknown"] is False
+
+
+def test_agent_replays_its_own_turns_as_json(config, chunks):
+    """Fix for baseline finding: plain-text history made the model drop the JSON format on turn 2."""
+    llm = FixedLLM(json.dumps({"reply": "ok", "citations": [], "handoff": False,
+                                "handoff_reason": None, "unknown": False, "qualification": {}}))
+    history = [{"role": "user", "content": "q1"}, {"role": "assistant", "content": "plain answer"},
+               {"role": "user", "content": "q2"}]
+    DemoAgent(config, chunks, llm).respond(history, lang="en")
+    sent = llm.calls[0]["messages"]
+    assert json.loads(sent[1]["content"])["reply"] == "plain answer"
+    assert sent[0] == history[0] and sent[2] == history[2]
+    assert history[1]["content"] == "plain answer"  # caller's history is not mutated
+
+
+def test_agent_accepts_bracketed_citation_ids(config, chunks):
+    """Fix for baseline finding: the model sometimes cites '[pricing#1]' instead of 'pricing#1'."""
+    llm = FixedLLM(json.dumps({"reply": "x", "citations": ["[security#2]", " pricing#1 "],
+                                "handoff": False, "handoff_reason": None, "unknown": False,
+                                "qualification": {}}))
+    turn = DemoAgent(config, chunks, llm).respond([{"role": "user", "content": "q"}], lang="en")
+    assert turn["citations"] == ["security#2", "pricing#1"]
+    assert turn["invalid_citations"] == []
