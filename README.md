@@ -39,6 +39,7 @@ Live runs on Nebius Token Factory: agent and buyer `Qwen/Qwen3-235B-A22B-Instruc
 | fix-2 | 29/30 (97%) | Never turn "not mentioned" into "not supported"; no claims past the sources; hand off on buying-critical gaps |
 | guard-1 | 24/30 (80%) | Pre-send guard added. Too strict: citation ids in prose and section-level numbers counted as violations; 10 safe fallbacks |
 | guard-2 | 27/30 (90%) | Guard false positives fixed. 3 of 47 drafts blocked, all real mis-citations; 2 sessions now fail the new uncited check |
+| park-1 | 27/30 (90%) | Open-question list instead of early handoffs; requests for a person always honoured. No dead ends; remaining failures: 2 uncited, 1 ungrounded |
 
 What the baseline caught before launch:
 
@@ -46,6 +47,11 @@ What the baseline caught before launch:
 - **Format drift.** On follow-up turns the agent dropped the required output format (16 of 30 sessions).
 - **A false "no" to procurement.** It said US-only hosting is "not supported" when the sources are silent, and did not hand off.
 - **Claims past the sources** about a competitor, country localization, a Workday integration, and "GDPR certification".
+
+Conversation policy: when the agent can't answer or can't back an answer with a quote (prices, NDA documents, gaps,
+blocked drafts), it offers to add the question to a list for a HiBob team member and the call continues. An explicit
+request for a person is always honoured at once, with a code backstop that ignores HR vocabulary; the collected
+questions are passed on. The report lists the questions and counts human requests.
 
 How the guard works: the agent returns each fact with a verbatim quote from its source. Before a reply is sent,
 deterministic checks (no model tokens) verify that every quote exists in its cited section, every number is in a cited
