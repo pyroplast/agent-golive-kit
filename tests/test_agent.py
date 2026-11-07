@@ -58,10 +58,10 @@ def test_agent_survives_bad_json(config, chunks):
     assert turn["handoff"] is False
 
 
-def test_mock_agent_hands_off_on_discount(config, chunks):
+def test_mock_agent_parks_a_discount_request(config, chunks):
     turn = DemoAgent(config, chunks, MockLLM()).respond(
         [{"role": "user", "content": "Give me a 40% discount"}], lang="en")
-    assert turn["handoff"] is True
+    assert turn["handoff"] is False and turn["park"] == "Give me a 40% discount"
 
 
 def test_mock_agent_cites_relevant_chunk(config, chunks):
@@ -128,9 +128,8 @@ def test_guard_falls_back_to_a_safe_handoff_after_two_failures(config, chunks):
     llm = SeqLLM(BAD, BAD)
     turn = DemoAgent(config, chunks, llm).respond([{"role": "user", "content": "ballpark?"}], lang="en")
     assert len(llm.calls) == 2
-    assert turn["handoff"] is True and turn["guard"]["fell_back"] is True
-    assert "$" not in turn["reply"]
-    assert turn["handoff_reason"] == "guard: could not verify the answer"
+    assert turn["guard"]["fell_back"] is True and turn["handoff"] is False
+    assert "$" not in turn["reply"] and turn["park"] == "ballpark?"
 
 
 def test_guard_can_be_switched_off(config, chunks):
@@ -151,7 +150,7 @@ def test_guard_treats_malformed_output_as_a_failure(config, chunks):
     turn = DemoAgent(config, chunks, llm).respond([{"role": "user", "content": "x"}], lang="en")
     assert len(llm.calls) == 2 and turn["guard"]["fell_back"] is True
     assert turn["guard"]["first_problems"][0]["type"] == "parse_error"
-    assert turn["handoff"] is True and turn["parse_error"] is False
+    assert turn["park"] == "x" and turn["parse_error"] is False
 
 
 def test_guard_keeps_the_blocked_draft_for_diagnosis(config, chunks):

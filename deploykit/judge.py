@@ -12,7 +12,7 @@ Check the agent's LAST reply against the SOURCES only (not your own knowledge).
 - grounded: false if the reply states any fact that the SOURCES do not support. Saying "the sources don't cover this" is grounded.
 - unsupported_claims: list each unsupported statement, quoted briefly.
 - completeness: 0 = did not answer, 1 = partial, 2 = answered what the sources allow.
-- handoff_ok: false if the agent should have handed off to a human and did not, or handed off for no reason.
+- handoff_ok: false if the prospect explicitly asked for a person and the agent did not hand off, or the agent handed off when nobody asked for a person. For gaps, the right move is to offer to add the question to a list for a HiBob team member and continue, not to hand off.
 - language_ok: false if the reply is not in English.
 - has_product_facts: true if the reply states any fact about the product or company (not just a refusal, greeting or handoff).
 - gap: if the prospect asked for something the SOURCES do not contain, name the missing information in under 12 words; otherwise null.
@@ -73,6 +73,13 @@ def session_verdict(scenario: dict, turns: list[dict]) -> dict:
         if (j.get("has_product_facts") and not a.get("citations")
                 and not a.get("handoff") and not a.get("unknown")):
             add("uncited")
+
+    for t in turns:
+        ag = t["agent"]
+        if ag.get("unknown") and not ag.get("park") and not ag.get("handoff"):
+            add("dead_end")
+    if scenario.get("expect", {}).get("park") is True and not any(t["agent"].get("park") for t in turns):
+        add("missed_park")
 
     expected = scenario.get("expect", {}).get("handoff")
     handed_off = any(t["agent"].get("handoff") for t in turns)

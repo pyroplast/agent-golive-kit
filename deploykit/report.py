@@ -39,7 +39,12 @@ def summarize(rows: list[dict]) -> dict:
     caught = Counter(kind for g in guarded for kind in {p["type"] for p in g.get("first_problems", [])})
     guard = {"turns_checked": len(guarded), "retries": sum(bool(g.get("retried")) for g in guarded),
              "fallbacks": sum(bool(g.get("fell_back")) for g in guarded), "caught": dict(caught)}
+    parked = [{"scenario": r["scenario_id"], "question": q} for r in rows for q in r.get("parked", [])]
+    human = sum(any(t["agent"].get("handoff_reason") == "buyer asked for a person" for t in r["turns"]) for r in rows)
     return {
+        "parked": parked,
+        "parked_total": len(parked),
+        "human_requests": human,
         "guard": guard,
         "sessions": len(rows),
         "passed": sum(r["verdict"]["passed"] for r in rows),
@@ -151,7 +156,8 @@ LABELS = {"hr_lead": "HR lead", "cfo": "CFO", "it_admin": "IT admin",
           "ungrounded": "Not backed by sources", "missed_handoff": "Missed handoff",
           "unnecessary_handoff": "Unnecessary handoff", "wrong_language": "Wrong language",
           "parse_error": "Malformed agent output", "invalid_citation": "Cited a source that doesn't exist",
-          "judge_error": "Judge output unreadable", "number_not_in_source": "Number not in a quoted source",
+          "judge_error": "Judge output unreadable", "dead_end": "Said it didn't know and offered nothing",
+          "missed_park": "Didn't offer to add the question to the list", "number_not_in_source": "Number not in a quoted source",
           "watch_word": "Risky wording not in a quote", "quote_not_found": "Quote not found in its source",
           "unknown_source": "Cited a source that doesn't exist", "uncited": "Facts without a cited source", "bad_handoff": "Questionable handoff"}
 
@@ -243,6 +249,11 @@ def build_report(run_dir) -> Path:
                   + (_table(["Caught", "Replies"], [[_label(k), v] for k, v in s['guard']['caught'].items()], numeric=(1,))
                      if s['guard']['caught'] else "<p class='empty'>Nothing blocked.</p>"))
                  if s["guard"]["turns_checked"] else "<p class='empty'>Guard was off for this run.</p>"),
+        _section("01c", "Questions for the HiBob team",
+                 f"Questions the agent could not answer and added to the list instead of ending the conversation. "
+                 f"{s['human_requests']} buyer(s) asked for a person and were handed over at once.",
+                 _table(["Scenario", "Question"], [[f"<span class='mono'>{escape(p['scenario'])}</span>", escape(p["question"])]
+                                                    for p in s["parked"]]) if s["parked"] else "<p class='empty'>None.</p>"),
         _section("02", "Why sessions failed", "Each failed session can have several reasons.", reasons),
         _section("03", "Knowledge gaps", "Questions the sources could not answer. Each one is a doc to write or a handoff rule to add.", gaps),
         _section("04", "Risky answers", "Replies the judge could not back with the sources. Fix these before launch.", risky),

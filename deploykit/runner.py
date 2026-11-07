@@ -15,9 +15,11 @@ from deploykit.simulator import Buyer
 
 def run_session(scenario, lang, agent, judge, buyer, max_turns):
     history = [{"role": "user", "content": scenario["opening"][lang]}]
-    turns = []
+    turns, parked = [], []
     for i in range(max_turns):
-        a = agent.respond(history, lang)
+        a = agent.respond(history, lang, parked=list(parked))
+        if a.get("park") and a["park"] not in parked:
+            parked.append(a["park"])
         j = judge.score(scenario, lang, history, a)
         turns.append({"user": history[-1]["content"], "agent": a, "judge": j})
         history.append({"role": "assistant", "content": a["reply"]})
@@ -28,7 +30,7 @@ def run_session(scenario, lang, agent, judge, buyer, max_turns):
             break
         history.append({"role": "user", "content": nxt})
     return {"scenario_id": scenario["id"], "category": scenario["category"],
-            "persona": scenario["persona"], "lang": lang, "turns": turns,
+            "persona": scenario["persona"], "lang": lang, "turns": turns, "parked": parked,
             "verdict": session_verdict(scenario, turns)}
 
 

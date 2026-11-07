@@ -54,7 +54,7 @@ def test_run_suite_writes_one_result_per_session_and_lang(run_dir, scenarios):
     hosting_en = next(r for r in rows if r["scenario_id"] == "exp-hosting" and r["lang"] == "en")
     assert len(hosting_en["turns"]) == 2  # opening + one scripted follow-up
     meta = json.loads((run_dir / "meta.json").read_text())
-    assert meta["name"] == "base" and meta["sessions"] == 3 and "cost" in meta
+    assert meta["name"] == "base" and meta["sessions"] == 4 and "cost" in meta
 
 
 def test_mock_run_outcomes(run_dir):
@@ -67,7 +67,7 @@ def test_mock_run_outcomes(run_dir):
 def test_summarize_and_report(run_dir):
     rows = [json.loads(l) for l in (run_dir / "results.jsonl").read_text().splitlines()]
     s = summarize(rows)
-    assert s["sessions"] == 3
+    assert s["sessions"] == 4
     assert set(s["by_category"]) == {"expected", "ambiguous", "adversarial"}
     assert 0.0 <= s["pass_rate"] <= 1.0
     html = build_report(run_dir).read_text()

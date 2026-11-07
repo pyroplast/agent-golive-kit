@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 from deploykit.guard import check_reply
 from deploykit.kb import BM25Index, Chunk, format_kb
@@ -14,6 +15,7 @@ OUTPUT_SPEC = """Reply with ONE JSON object and nothing else:
  "handoff": <true if a human Account Executive should take over>,
  "handoff_reason": "<short reason or null>",
  "unknown": <true if the sources do not answer the question>,
+ "park": "<the prospect's question, if you offer to add it to the list for a HiBob team member; otherwise null>",
  "qualification": {"<field>": "<value the prospect revealed>"}}
 Every fact in "reply" must appear as a claim with a verbatim quote. A fact you cannot quote must not be in the reply.
 Before sending, an automatic check compares every number and words like "certified", "guaranteed" or "annual"
@@ -25,8 +27,24 @@ Rewrite the reply. Keep only facts you can quote word for word from the sources,
 and remove any number or wording that is not in a quote. If you cannot support the answer, say so and hand off.
 Reply with the JSON object only."""
 
-FALLBACK_REPLY = ("I want to give you an exact answer on that, so I'll connect you with an Account Executive "
-                  "who can confirm the details.")
+FALLBACK_REPLY = ("I can't confirm that from HiBob's material, and I don't want to guess. Would you like me to add "
+                  "this question to the list to discuss with a HiBob team member? We can keep going in the meantime.")
+
+HANDOFF_REPLY = "Of course. I'm handing you over to a HiBob team member now."
+
+_HUMAN = [re.compile(p, re.I) for p in (
+    r"\b(talk|speak|chat)\s+(to|with)\s+(a\s+|an\s+|some\s*one|somebody|your\s+)?(real\s+|actual\s+)?"
+    r"(human|person|someone|somebody|rep|representative|sales|agent|team)\b",
+    r"\b(get|give|connect|transfer|put|pass)\s+me\s+(to\s+|with\s+|through\s+to\s+)?(a\s+|an\s+)?(real\s+)?"
+    r"(human|person|someone|somebody|rep|representative|sales)\b",
+    r"\b(real|actual|live)\s+(person|human)\b",
+    r"\bhuman\s+(now|please)\b",
+)]
+
+
+def asks_for_human(text: str) -> bool:
+    """Explicit request for a person. Deliberately ignores HR vocabulary like 'human resources'."""
+    return any(p.search(text) for p in _HUMAN)
 
 
 def parse_json(text: str) -> dict:
@@ -42,9 +60,11 @@ def parse_json(text: str) -> dict:
     raise ValueError("no JSON object found")
 
 
-def build_system_prompt(config: dict, sources: list[Chunk]) -> str:
+def build_system_prompt(config: dict, sources: list[Chunk], parked: list[str] | None = None) -> str:
     rules = "\n".join(f"- {r}" for r in config["rules"])
     handoff = "\n".join(f"- {r}" for r in config["handoff_rules"])
+    park = "\n".join(f"- {r}" for r in config.get("park_rules", []))
+    current = "\n".join(f"- {q}" for q in parked or []) or "- (empty)"
     qual = "\n".join(f"- {q['field']}: {q['question']}" for q in config["qualification"])
     return f"""You are the {config['agent_name']} for {config['client']}'s product {config['product']}.
 Goal: {config['goal']}
@@ -52,8 +72,15 @@ Goal: {config['goal']}
 Rules:
 {rules}
 
-Hand off to a human when:
+Hand off to a human only when:
 {handoff}
+
+Do not hand off for anything else. Instead, offer to add the question to the list for a HiBob team member
+("{config.get('park_offer', '')}"), set "park" to the question, and keep the conversation going when:
+{park}
+
+Questions already on the list:
+{current}
 
 Qualification fields to learn naturally during the conversation (ask one at a time, only when it fits):
 {qual}
@@ -103,6 +130,7 @@ class DemoAgent:
             "handoff": bool(data.get("handoff", False)),
             "handoff_reason": data.get("handoff_reason"),
             "unknown": bool(data.get("unknown", False)),
+            "park": (str(data["park"]).strip() or None) if data.get("park") else None,
             "qualification": data.get("qualification") or {},
             "parse_error": parse_error,
         }
@@ -112,9 +140,20 @@ class DemoAgent:
             return [{"type": "parse_error", "detail": "output was not the JSON object"}]
         return check_reply(turn, self.chunks, user_text)["problems"]
 
-    def respond(self, history: list[dict], lang: str) -> dict:
+    def respond(self, history: list[dict], lang: str, parked: list[str] | None = None) -> dict:
+        turn = self._respond(history, lang, parked or [])
+        last = history[-1]["content"] if history and history[-1]["role"] == "user" else ""
+        if asks_for_human(last):
+            # A person always gets a person, whatever the model said. Pass the open questions on.
+            items = list(parked or []) + ([turn["park"]] if turn.get("park") else [])
+            listing = (" I'll pass on the questions we collected: " + "; ".join(items) + ".") if items else ""
+            turn.update(reply=HANDOFF_REPLY + listing, handoff=True, handoff_reason="buyer asked for a person",
+                        park=None)
+        return turn
+
+    def _respond(self, history: list[dict], lang: str, parked: list[str]) -> dict:
         sources = self.sources_for(history)
-        system = build_system_prompt(self.config, sources)
+        system = build_system_prompt(self.config, sources, parked)
         # Replay the agent's own earlier turns in the JSON shape it must keep producing.
         # With plain-text history the model drifted out of the format on follow-up turns.
         replay = [{"role": m["role"], "content": json.dumps({"reply": m["content"]}, ensure_ascii=False)}
@@ -140,8 +179,8 @@ class DemoAgent:
             final = self._check(turn, user_text)
             if final:
                 fell_back = True
-                turn = {**self._to_turn({}, False), "reply": FALLBACK_REPLY, "handoff": True,
-                        "handoff_reason": "guard: could not verify the answer"}
+                last = history[-1]["content"] if history and history[-1]["role"] == "user" else None
+                turn = {**self._to_turn({}, False), "reply": FALLBACK_REPLY, "park": last}
         turn["guard"] = {"enabled": True, "retried": retried, "fell_back": fell_back,
                          "first_problems": first, "final_problems": final,
                          "blocked_draft": blocked_draft}

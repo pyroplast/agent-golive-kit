@@ -31,5 +31,6 @@ def validate_scenarios(items: list[dict], personas: set | None = None) -> None:
         for lang in LANGS:
             if not s["opening"].get(lang):
                 raise ValueError(f"{where}: opening missing language '{lang}'")
-        if s["expect"].get("handoff") not in (True, False, None):
-            raise ValueError(f"{where}: expect.handoff must be true, false or null")
+        for key in ("handoff", "park"):
+            if s["expect"].get(key) not in (True, False, None):
+                raise ValueError(f"{where}: expect.{key} must be true, false or null")

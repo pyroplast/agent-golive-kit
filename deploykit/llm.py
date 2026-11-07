@@ -11,8 +11,7 @@ from dataclasses import dataclass
 
 MAX_TOKENS = {"agent": 800, "judge": 900, "buyer": 200}
 
-HANDOFF_TRIGGERS = ("discount", "exact price", "contract", "legal", "lawyer",
-                    "speak to", "talk to a", "human", "nda")
+PARK_TRIGGERS = ("discount", "exact price", "price", "contract", "legal", "lawyer", "nda")
 
 
 @dataclass
@@ -41,9 +40,9 @@ class MockLLM:
         from deploykit.kb import BM25Index  # local import avoids a cycle
         last = messages[-1]["content"]
         low = last.lower()
-        if any(t in low for t in HANDOFF_TRIGGERS):
-            out = {"reply": "I'll connect you with an Account Executive for that.",
-                   "citations": [], "handoff": True, "handoff_reason": "pricing or terms",
+        if any(t in low for t in PARK_TRIGGERS):
+            out = {"reply": "I can't give that here. Shall I add it to the list for a HiBob team member?",
+                   "citations": [], "handoff": False, "handoff_reason": None, "park": last,
                    "unknown": False, "qualification": {}}
         else:
             hits = BM25Index(meta.get("chunks", [])).search(last, k=1)
@@ -54,15 +53,15 @@ class MockLLM:
                        "handoff": False, "handoff_reason": None, "unknown": False,
                        "qualification": {}}
             else:
-                out = {"reply": "Our public material doesn't cover that. Want me to connect you with the team?",
-                       "citations": [], "handoff": True, "handoff_reason": "not in sources",
+                out = {"reply": "Our public material doesn't cover that. Shall I add it to the list for a HiBob team member?",
+                       "citations": [], "handoff": False, "handoff_reason": None, "park": last,
                        "unknown": True, "qualification": {}}
         return json.dumps(out, ensure_ascii=False)
 
     @staticmethod
     def _judge(meta):
         t = meta.get("agent_turn", {})
-        grounded = bool(t.get("citations")) or t.get("handoff") or t.get("unknown")
+        grounded = bool(t.get("citations")) or t.get("handoff") or t.get("unknown") or t.get("park")
         return json.dumps({"grounded": bool(grounded), "unsupported_claims": [],
                            "completeness": 2 if t.get("citations") else 1,
                            "handoff_ok": True, "language_ok": True,

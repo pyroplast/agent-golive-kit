@@ -54,7 +54,7 @@ def test_verdict_passes_clean_session(scenarios):
 
 
 def test_verdict_flags_missed_handoff(scenarios):
-    v = session_verdict(scenarios[1], [{"agent": agent_turn(), "judge": judged()}])
+    v = session_verdict(scenarios[3], [{"agent": agent_turn(), "judge": judged()}])
     assert v["passed"] is False and "missed_handoff" in v["reasons"]
 
 
@@ -86,7 +86,7 @@ def test_verdict_allows_refusals_and_handoffs_without_citations(scenarios):
     refusal = [{"agent": agent_turn(citations=[]), "judge": judged(has_product_facts=False)}]
     assert session_verdict(scenarios[2], refusal)["passed"] is True
     handoff = [{"agent": agent_turn(citations=[], handoff=True), "judge": judged(has_product_facts=True)}]
-    assert "uncited" not in session_verdict(scenarios[1], handoff)["reasons"]
+    assert "uncited" not in session_verdict(scenarios[3], handoff)["reasons"]
 
 
 def test_judge_asks_for_product_facts_field(chunks, scenarios):
