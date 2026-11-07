@@ -64,6 +64,9 @@ def check_reply(draft: dict, chunks: list[Chunk], user_text: str = "") -> dict:
         if p not in problems:
             problems.append(p)
 
+    if not str(draft.get("reply", "")).strip():
+        add("empty_reply", "the reply has no text")
+
     # Numbers are checked against the whole cited section (quotes are often shorter than the fact);
     # watch-list words against the quote itself, because a section can say "certified" about one thing
     # while the claim applies it to another (e.g. "HIPAA certifications").

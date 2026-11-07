@@ -135,3 +135,8 @@ def test_watch_words_stay_quote_level_even_if_the_section_has_them(chunks):
     d = draft("HiBob holds HIPAA certifications.",
               [claim("HiBob holds HIPAA certifications", "security#1", "SOC 2 Type II audits")])
     assert "watch_word" in problem_types(check_reply(d, chunks, user_text=""))
+
+
+def test_empty_reply_is_blocked(chunks):
+    """park-1: the agent sent an empty reply and nothing caught it."""
+    assert "empty_reply" in problem_types(check_reply(draft("   "), chunks, user_text="How long until we'd be live?"))
