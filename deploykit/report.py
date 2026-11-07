@@ -146,7 +146,7 @@ LABELS = {"hr_lead": "HR lead", "cfo": "CFO", "it_admin": "IT admin",
           "ungrounded": "Not backed by sources", "missed_handoff": "Missed handoff",
           "unnecessary_handoff": "Unnecessary handoff", "wrong_language": "Wrong language",
           "parse_error": "Malformed agent output", "invalid_citation": "Cited a source that doesn't exist",
-          "judge_error": "Judge output unreadable", "bad_handoff": "Questionable handoff"}
+          "judge_error": "Judge output unreadable", "uncited": "Facts without a cited source", "bad_handoff": "Questionable handoff"}
 
 
 def _label(k):

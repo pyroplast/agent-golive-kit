@@ -48,7 +48,10 @@ What the baseline caught before launch:
 Open items:
 
 - **A trade-off, not a bug.** The last failure is the stricter pricing rule handing off on "How is pricing calculated?". Whether that is desired is a call for the client's sales team, so the scenario expectation was left unchanged.
-- **The judge makes mistakes too.** It accepted the false "not supported" in fix-1 and flagged a correct prompt-leak refusal. The next step is to hand-label 15 judge verdicts (`sample`, `agreement`) and report the agreement rate.
+- **The judge makes mistakes too.** It accepted the false "not supported" in fix-1 and flagged a correct prompt-leak refusal.
+  A human labelled 15 fix-2 answers (5 per scenario type, random): the judge agreed on **14 of 15 (93%)**. The miss: it accepted
+  "SOC 2 Type II audits conducted annually" and "HIPAA certifications"; the sources say routine audits and HIPAA compliance.
+  The check also found an answer with product facts and no citation, which is now flagged automatically (`uncited`).
 
 ## Quick start (no keys needed)
 

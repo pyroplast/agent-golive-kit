@@ -65,6 +65,7 @@ class MockLLM:
         return json.dumps({"grounded": bool(grounded), "unsupported_claims": [],
                            "completeness": 2 if t.get("citations") else 1,
                            "handoff_ok": True, "language_ok": True,
+                           "has_product_facts": bool(t.get("citations")),
                            "gap": "not covered by sources" if t.get("unknown") else None,
                            "notes": "mock judge"})
 
