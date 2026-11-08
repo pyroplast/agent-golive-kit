@@ -129,6 +129,8 @@ class DemoAgent:
         if self.policy:  # an approved answer or sentence id is not a source; its real sources are added later
             cites = [c for c in cites if c not in self.policy.approved_ids and c not in self.policy.units]
         cites += [clean(str(c.get("source", ""))) for c in claims if c.get("source")]
+        if self.policy:
+            cites = [c for c in cites if c not in self.policy.approved_ids and c not in self.policy.units]
         seen, ordered = set(), []
         for c in cites:
             if c and c not in seen:

@@ -291,3 +291,27 @@ def test_medium_checks_names_against_the_section_numbers_against_the_quote(chunk
     d2 = {"reply": "Hosted on AWS in Ireland, 2 regions.", "handoff": False, "unknown": False,
           "claims": [claim("Hosted on AWS in Ireland, 2 regions", "security#2", "Hosted on AWS")]}
     assert "number_not_in_source" in types(check_reply(d2, chunks, "", tier="medium"))
+
+
+# --- tier-4 findings ------------------------------------------------------------------
+
+def test_approved_sentences_pass_at_any_tier(chunks):
+    """tier-4: a reply assembled from approved sentences was blocked at medium as having no claims."""
+    d = {"reply": "Bob is hosted on AWS. The primary region is Ireland; backups are in Germany. Anything else?",
+         "handoff": False, "unknown": False, "claims": []}
+    for tier in ("low", "medium", "high"):
+        assert check_reply(d, chunks, "", tier=tier, approved=APPROVED2)["ok"], tier
+
+
+def test_unapproved_text_next_to_approved_sentences_is_still_checked_at_medium(chunks):
+    d = {"reply": "Bob is hosted on AWS. It costs 8 euros per employee.", "handoff": False, "unknown": False, "claims": []}
+    assert not check_reply(d, chunks, "", tier="medium", approved=APPROVED2)["ok"]
+
+
+def test_sentence_id_used_as_a_claim_source_is_not_an_invalid_citation(config, chunks):
+    """tier-4: the model put 'payroll-coverage.1' in a claim's source field."""
+    llm = SeqLLM(out(reply="Anything else?", approved_sentences=["sec-hosting.1"],
+                     claims=[{"text": "t", "source": "sec-hosting.1", "quote": "q"}]))
+    turn = DemoAgent(dict(config, risk=RISK), chunks, llm, approved=APPROVED2).respond(
+        [{"role": "user", "content": "Where is it hosted? residency"}], lang="en")
+    assert turn["invalid_citations"] == [] and turn["citations"] == ["security#2"]

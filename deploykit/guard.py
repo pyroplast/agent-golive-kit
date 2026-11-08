@@ -182,6 +182,11 @@ def check_reply(draft: dict, chunks: list[Chunk], user_text: str = "", glossary=
         return {"ok": not problems, "problems": problems}
 
     strict = tier in ("medium", "high")
+    # Approved sentences are pre-verified text: remove them before checking the rest of the reply (tier-4).
+    index = _approved_index(approved or [])
+    if index:
+        kept = [u for u in _units(str(draft.get("reply", ""))) if _norm(u) not in index]
+        draft = {**draft, "reply": " ".join(kept)}
     if not draft.get("handoff") and not (draft.get("claims") or []):
         facts = factual_sentences(str(draft.get("reply", "")))
         if facts:
