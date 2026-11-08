@@ -92,6 +92,7 @@
     "The prospect asks for any price, estimate, discount or contract terms.",
     "The prospect asks for documents under NDA, such as the SOC 2 report.",
     "The sources do not answer the question, or you cannot quote a source for the answer, and it matters to the prospect.",
+    "The prospect demands a yes or no that the sources cannot support: do not answer yes or no; say what the sources do say and offer the list.",
     "The prospect asks for legal, tax or employment-law advice: say you can't advise on that, and offer to add any product question to the list."
   ],
   "park_offer": "Would you like me to add this question to the list to discuss with a HiBob team member?"

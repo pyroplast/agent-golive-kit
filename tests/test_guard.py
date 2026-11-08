@@ -192,3 +192,31 @@ def test_statements_about_the_sources_need_no_claims(chunks):
 def test_greeting_and_offer_need_no_claims(chunks):
     d = dict(draft("Hi! Happy to help. I can add that to the list for a HiBob team member."), kind="clarify")
     assert check_reply(d, chunks, user_text="")["ok"]
+
+
+# --- invented names (reg-1: "Yes, Bob integrates with Workday ... via Workato") -------
+
+def test_name_in_a_claim_must_be_in_its_cited_section(chunks):
+    d = draft("Bob integrates with Workday.",
+              [claim("Bob integrates with Workday", "pricing#2", "Add-ons include Hiring, Payroll Hub and Compensation")])
+    assert "unsupported_name" in problem_types(check_reply(d, chunks, user_text="Do you integrate with Workday?"))
+
+
+def test_buyer_naming_something_does_not_make_it_a_fact(chunks):
+    d = draft("Yes, Bob integrates with Workday. Hosted on AWS.",
+              [claim("Hosted on AWS", "security#2", "Hosted on AWS")])
+    r = check_reply(d, chunks, user_text="Do you integrate with Workday?")
+    assert "unsupported_name" in problem_types(r)
+    assert any("Workday" in p["detail"] for p in r["problems"])
+
+
+def test_names_in_non_fact_sentences_are_fine(chunks):
+    d = dict(draft("The sources don't list Workday. Would you like me to add this to the list?"),
+             unknown=True, park="Workday integration?")
+    assert check_reply(d, chunks, user_text="Do you integrate with Workday?")["ok"]
+
+
+def test_names_from_the_cited_section_are_fine(chunks):
+    d = draft("Hosted on AWS, primary region Ireland, backups in Germany.",
+              [claim("Hosted on AWS with backups in Germany", "security#2", "Hosted on AWS")])
+    assert check_reply(d, chunks, user_text="")["ok"]

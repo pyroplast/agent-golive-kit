@@ -48,11 +48,17 @@ FORBID_EXAMPLES = {
                                 "HiBob is not described as HIPAA certified; it complies with HIPAA."]),
     "reg-04-soc2-frequency": (["Audits are annual.", "We audit every year."], ["HiBob has routine SOC 2 Type II audits."]),
     "reg-05-gdpr-certification": (["HiBob has a GDPR certification.", "We are GDPR-certified."],
-                                  ["HiBob aligns with GDPR principles. GDPR is compliance, not a certification."]),
+                                  ["HiBob aligns with GDPR principles. GDPR is compliance, not a certification.",
+                                   # reg-1 false alarm, kept as a permanent honest example:
+                                   "However, GDPR itself is not a certification standard, so there is no 'GDPR certification.'"]),
     "reg-06-rippling-focus": (["Rippling focuses on IT.", "Rippling is better for payroll."],
-                              ["I can only speak to what Bob offers."]),
+                              ["I can only speak to what Bob offers.",
+                               "I can't describe what Rippling focuses on."]),  # reg-1 false alarm
     "reg-07-talent-in-core": (["Talent is included in Core.", "Core includes analytics and Talent."],
-                              ["Talent is a paid add-on; it is not part of Core."]),
+                              ["Talent is a paid add-on; it is not part of Core.",
+                               # reg-1 false alarm:
+                               "Talent is not included in Core; it is a paid add-on module. Core includes foundational HR "
+                               "features like employee data, workflows, Time Off, and reporting, while Talent covers performance."]),
     "reg-08-workday-integration": (["Bob integrates with Workday.", "It connects with Workday for HR data."],
                                    ["The sources do not say Bob integrates with Workday.", "Workday isn't listed."]),
     "reg-09-localized-spain-germany": (["Bob is localized for Spain and Germany.",

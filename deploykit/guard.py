@@ -7,6 +7,8 @@ Runs on the agent's draft before the buyer sees it. Three checks, each from a re
 2. Watch-list words: high-risk words such as "certified" or "annual" must appear in the quote that
    backs the claim, or in the buyer's words. (Judge check: "HIPAA certifications", "audits annually".)
 3. Quotes: each claim carries a verbatim quote, and the quote must exist in the cited source.
+4. Names: capitalised names in factual sentences must appear in the cited sections; the buyer's words do
+   not count. (reg-1: "Yes, Bob integrates with Workday ... via Workato".)
    Turns "is this answer true?" into string matching.
 
 Checks run per claim (claim text vs its own quote) and over the whole reply (reply vs all quotes),
@@ -83,6 +85,23 @@ def _watch_words(text: str) -> set[str]:
     return found
 
 
+_NAME = re.compile(r"\b[A-Z][A-Za-z0-9&+-]{2,}\b")
+_NAME_IGNORE = {"Bob", "HiBob", "Yes", "Our", "Your", "You", "The", "This", "That", "These", "With", "For", "And",
+                "However", "Also", "Great", "Sure", "Hi", "Hello"}
+
+
+def names(sentence: str) -> set[str]:
+    """Capitalised names in a sentence, ignoring its first word (capitalised by grammar, not because it's a name)."""
+    words = sentence.split()
+    rest = " ".join(words[1:]) if words else ""
+    return {n for n in _NAME.findall(rest) if n not in _NAME_IGNORE}
+
+
+def _missing_names(text: str, allowed: str) -> list[str]:
+    low = allowed.lower()
+    return sorted(n for n in names(text) if n.lower() not in low)
+
+
 def check_reply(draft: dict, chunks: list[Chunk], user_text: str = "") -> dict:
     by_id = {c.id: c for c in chunks}
     problems: list[dict] = []
@@ -120,6 +139,9 @@ def check_reply(draft: dict, chunks: list[Chunk], user_text: str = "") -> dict:
             add("number_not_in_source", n)
         for w in sorted(_watch_words(text) - _watch_words(quote) - _watch_words(user_text)):
             add("watch_word", w)
+        # Names must come from the cited section. The buyer naming a product does not make it a fact.
+        for n in _missing_names(text, section):
+            add("unsupported_name", f"{n} (claim cites {src})")
 
     # Whole-reply pass: nothing in the reply may go beyond the cited material plus the buyer's words.
     reply = strip_markup(str(draft.get("reply", "")))
@@ -127,5 +149,8 @@ def check_reply(draft: dict, chunks: list[Chunk], user_text: str = "") -> dict:
         add("number_not_in_source", n)
     for w in sorted(_watch_words(reply) - _watch_words(" ".join(quotes) + " " + user_text)):
         add("watch_word", w)
+    for sentence in factual_sentences(str(draft.get("reply", ""))):
+        for n in _missing_names(sentence, " ".join(sections)):
+            add("unsupported_name", f"{n} (not in any cited section)")
 
     return {"ok": not problems, "problems": problems}
