@@ -20,6 +20,7 @@ class LLMResponse:
     input_tokens: int
     output_tokens: int
     model: str
+    cached_tokens: int = 0  # part of input_tokens served from the provider's prompt cache
 
 
 class MockLLM:
@@ -60,6 +61,8 @@ class MockLLM:
 
     @staticmethod
     def _judge(meta):
+        if meta.get("call"):
+            return json.dumps({"contradictions": [], "qualification": {}, "notes": "mock call judge"})
         t = meta.get("agent_turn", {})
         grounded = bool(t.get("citations")) or t.get("handoff") or t.get("unknown") or t.get("park")
         return json.dumps({"grounded": bool(grounded), "unsupported_claims": [],
@@ -141,8 +144,9 @@ class OpenAICompatLLM:
         )
         text = r.choices[0].message.content or ""
         u = r.usage
+        cached = getattr(getattr(u, "prompt_tokens_details", None), "cached_tokens", 0) or 0
         return LLMResponse(text, getattr(u, "prompt_tokens", 0) or 0,
-                           getattr(u, "completion_tokens", 0) or 0, model)
+                           getattr(u, "completion_tokens", 0) or 0, model, cached_tokens=cached)
 
     def list_models(self) -> list[str]:
         return sorted(m.id for m in self.client.models.list().data)
@@ -162,13 +166,19 @@ class CostTracker:
             self._add(role, r)
 
     def _add(self, role: str, r: LLMResponse):
-        row =self.by_role.setdefault(role, {"input_tokens": 0, "output_tokens": 0, "usd": 0.0, "calls": 0})
+        row = self.by_role.setdefault(role, {"input_tokens": 0, "cached_tokens": 0, "output_tokens": 0,
+                                             "usd": 0.0, "calls": 0})
         row["input_tokens"] += r.input_tokens
+        row["cached_tokens"] = row.get("cached_tokens", 0) + r.cached_tokens
         row["output_tokens"] += r.output_tokens
         row["calls"] += 1
         p = self.prices.get(r.model)
         if p:
-            row["usd"] += r.input_tokens / 1e6 * p["input"] + r.output_tokens / 1e6 * p["output"]
+            # Cached input is billed at the cache price when the provider has one (the judge resends the whole
+            # knowledge base every call, so most of its input is cached). Without one, it costs the full rate.
+            cached = min(r.cached_tokens, r.input_tokens) if "cache_read" in p else 0
+            row["usd"] += ((r.input_tokens - cached) / 1e6 * p["input"] + cached / 1e6 * p["cache_read"] if cached
+                           else r.input_tokens / 1e6 * p["input"]) + r.output_tokens / 1e6 * p["output"]
         elif r.model != "mock":
             self.unpriced.add(r.model)
 

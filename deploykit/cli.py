@@ -79,6 +79,63 @@ def cmd_run(a):
     return 0
 
 
+def _llm(a):
+    if a.provider == "mock":
+        return MockLLM(), {}
+    models, prices, region = _models(a.models, a.provider)
+    if a.provider == "anthropic":
+        return AnthropicLLM(models), prices
+    if a.provider == "bedrock":
+        return BedrockLLM(models, region=os.environ.get("AWS_REGION", region)), prices
+    if not os.environ.get("NEBIUS_API_KEY"):
+        sys.exit("Set NEBIUS_API_KEY to use the nebius provider")
+    return OpenAICompatLLM(models), prices
+
+
+def cmd_calls(a):
+    from deploykit.calls import load_calls, run_calls, summarize_calls, load_call_rows, validate_calls
+    config = json.loads(Path(a.config).read_text())
+    calls = load_calls(a.calls)
+    validate_calls(calls, personas=set(config["personas"]))
+    if a.limit:
+        calls = calls[: a.limit]
+    llm, prices = _llm(a)
+    run_dir = run_calls(config, load_kb(a.kb), calls, llm, out_dir=a.out, name=a.name, prices=prices,
+                        workers=a.workers, retrieval=a.retrieval, provider=a.provider,
+                        guard=not a.no_guard, approved=_approved(a))
+    report = build_report(run_dir)
+    s = summarize_calls(load_call_rows(run_dir))
+    stages = " · ".join(f"turns {k}: {v['rate']:.0%}" for k, v in s["by_stage"].items() if v["rate"] is not None)
+    print(f"{run_dir.name}: {s['calls']} calls · {s['turns_passed']}/{s['turns']} turns passed · "
+          f"{s['calls_passed']} clean calls · gate {'PASS' if s['gate']['passed'] else 'BLOCKED'} · "
+          f"cost ${s['cost_usd']:.2f}")
+    print(f"  {stages} · reply time p50 {s['latency']['p50']}s, max {s['latency']['max']}s")
+    print(f"report: {report}")
+    return 0
+
+
+def _show_calls(a):
+    from deploykit.calls import load_call_rows
+    for r in load_call_rows(a.run):
+        v = r["verdict"]
+        print(f"\n== CALL {r['call_id']} [{r['persona']}] {'PASS' if v['passed'] else 'FAIL'} "
+              f"{', '.join(v['reasons'])} · first failure turn {v.get('first_failure_turn')} · ended {r.get('ended')}")
+        for t in r["turns"]:
+            ag, j, tv = t["agent"], t["judge"], t["verdict"]
+            print(f"  T{t['n']} BUYER: {t['user']}  [tier {ag.get('tier')}, {t.get('latency_s', 0):.1f}s]")
+            print(f"  T{t['n']} AGENT: {ag['reply'][:a.width]}")
+            print(f"    {'ok' if tv['passed'] else 'FAIL ' + ','.join(tv['reasons'])} cites={ag['citations']} "
+                  f"park={bool(ag.get('park'))} handoff={ag['handoff']} grounded={j.get('grounded')} "
+                  f"claims={j.get('unsupported_claims')}")
+            g = ag.get("guard") or {}
+            if g.get("retried") or g.get("fell_back"):
+                print(f"    GUARD: {[p['type'] + ':' + p['detail'] for p in g.get('first_problems', [])]}"
+                      f" -> {'fallback' if g['fell_back'] else 'fixed on retry'}")
+        cj = r.get("call_judge") or {}
+        print(f"  CALL JUDGE: contradictions={cj.get('contradictions')} notes={cj.get('notes')}")
+    return 0
+
+
 def cmd_models(a):
     if not os.environ.get("NEBIUS_API_KEY"):
         sys.exit("Set NEBIUS_API_KEY")
@@ -97,6 +154,8 @@ def cmd_show(a):
     """Print every conversation in plain text (for CI logs)."""
     meta = json.loads((Path(a.run) / "meta.json").read_text())
     print(f"run {meta['name']} · cost {json.dumps(meta['cost'])}")
+    if meta.get("suite") == "calls":
+        return _show_calls(a)
     for r in load_rows(a.run):
         v = r["verdict"]
         print(f"\n== {r['scenario_id']} [{r['category']}/{r['persona']}] "
@@ -184,6 +243,22 @@ def build_parser():
     r.add_argument("--approved", default=str(ROOT / "config" / "approved_answers.json"))
     r.add_argument("--publish-bucket", help="S3 bucket to upload the run to")
     r.set_defaults(fn=cmd_run)
+
+    c = sub.add_parser("calls", help="run the demo-call suite (whole calls, one question at a time)")
+    c.add_argument("--provider", choices=["mock", "anthropic", "bedrock", "nebius"], default="mock")
+    c.add_argument("--name")
+    c.add_argument("--limit", type=int, help="only the first N calls")
+    c.add_argument("--workers", type=int, default=5)
+    c.add_argument("--retrieval", choices=["full", "bm25"], default="full")
+    c.add_argument("--kb", default=str(ROOT / "kb"))
+    c.add_argument("--calls", default=str(ROOT / "suite" / "calls.json"))
+    c.add_argument("--config", default=str(ROOT / "config" / "client.json"))
+    c.add_argument("--models", default=str(ROOT / "config" / "models.json"))
+    c.add_argument("--out", default=str(ROOT / "runs"))
+    c.add_argument("--no-guard", action="store_true")
+    c.add_argument("--no-tiers", action="store_true")
+    c.add_argument("--approved", default=str(ROOT / "config" / "approved_answers.json"))
+    c.set_defaults(fn=cmd_calls)
 
     ml = sub.add_parser("models", help="list models on Nebius Token Factory"); ml.set_defaults(fn=cmd_models)
     sh = sub.add_parser("show", help="print every conversation"); sh.add_argument("run")

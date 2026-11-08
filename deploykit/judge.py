@@ -124,3 +124,43 @@ def session_verdict(scenario: dict, turns: list[dict]) -> dict:
     if not reasons:
         return {"passed": True, "reasons": []}
     return {"passed": False, "reasons": reasons, "failure_kind": failure_kind(reasons, turns)}
+
+
+CALL_JUDGE_SYSTEM = """You audit a WHOLE sales demo call after it ended. The per-turn facts were already checked
+against the sources; your job is the call as a whole. Be strict and literal.
+
+- contradictions: every place where the agent said something in one turn that contradicts or is incompatible
+  with what it said in another turn (for example "supported" in turn 3 and "not supported" in turn 12, or two
+  different numbers for the same thing). Give the turn numbers and a short detail. Empty list if none.
+  Declining to answer something it answered earlier also counts.
+- qualification: what the agent learned about the buyer's company (size, countries, current system,
+  modules of interest, timeline), as short values. Only what the buyer actually said.
+- notes: one short sentence on how the call went.
+
+Reply with ONE JSON object with exactly these keys:
+{"contradictions": [{"turns": [int, int], "detail": str}], "qualification": {str: str}, "notes": str}"""
+
+
+class CallJudge:
+    """One verdict per call: consistency across turns, which a per-turn judge cannot see."""
+
+    def __init__(self, llm, chunks: list[Chunk] | None = None):
+        self.llm = llm
+
+    def score(self, call: dict, turns: list[dict]) -> dict:
+        p = call.get("profile", {})
+        lines = [f"Buyer: {p.get('role', '')} at {p.get('company', '')}."]
+        for t in turns:
+            lines += [f"TURN {t['n']}", f"BUYER: {t['user']}", f"AGENT: {t['agent']['reply']}"]
+        r = self.llm.complete("judge", CALL_JUDGE_SYSTEM, [{"role": "user", "content": "\n".join(lines)}],
+                              meta={"call": True})
+        try:
+            data = parse_json(r.text)
+            if not isinstance(data.get("contradictions"), list):
+                raise ValueError("no contradictions list")
+            return {"contradictions": [c for c in data["contradictions"] if isinstance(c, dict)],
+                    "qualification": data.get("qualification") or {}, "notes": str(data.get("notes", "")),
+                    "judge_error": False}
+        except ValueError:
+            return {"contradictions": [], "qualification": {}, "notes": "call judge output unreadable",
+                    "judge_error": True}

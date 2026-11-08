@@ -12,12 +12,17 @@ on:
         type: choice
         options: [nebius, bedrock]
         default: nebius
+      suite:
+        description: "questions = 43 single questions; calls = 5 demo calls of 15 turns"
+        type: choice
+        options: [questions, calls]
+        default: questions
       name:
         description: Run name
         required: true
         default: baseline
       limit:
-        description: Only the first N scenarios (empty = all)
+        description: Only the first N scenarios or calls (empty = all)
         required: false
       compare_to:
         description: Name of an earlier run of this workflow to diff against (optional)
@@ -61,7 +66,16 @@ jobs:
           path: work/runs/${{ inputs.compare_to }}
           if_no_artifact_found: warn
 
+      - name: Run the call suite
+        if: ${{ inputs.suite == 'calls' }}
+        run: |
+          ARGS="--provider ${{ inputs.provider }} --name ${{ inputs.name }} --out work/runs --workers 5"
+          if [ -n "${{ inputs.limit }}" ]; then ARGS="$ARGS --limit ${{ inputs.limit }}"; fi
+          python -m deploykit calls $ARGS
+          python -m deploykit show work/runs/${{ inputs.name }}
+
       - name: Run the suite
+        if: ${{ inputs.suite != 'calls' }}
         run: |
           ARGS="--provider ${{ inputs.provider }} --name ${{ inputs.name }} --out work/runs --workers 4"
           if [ -n "${{ inputs.limit }}" ]; then ARGS="$ARGS --limit ${{ inputs.limit }}"; fi
