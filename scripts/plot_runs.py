@@ -198,6 +198,22 @@ def render(data: dict) -> str:
                 f"<td class='n'>{blocked}</td><td class='n'>{fallbacks}</td><td class='n'>${r['cost_usd']:.2f}</td></tr>")
 
     rows = "".join(row(r) for r in runs)
+    billed = data.get("billed_usd")
+    cost_tile = (f"<b>${billed:.2f}</b><span>billed for {len(runs)} runs; estimated ${total_cost:.2f} at list price</span>"
+                 if billed is not None else f"<b>${total_cost:.2f}</b><span>model usage, {len(runs)} runs</span>")
+    calls = data.get("call_runs") or []
+    calls_html = ""
+    if calls:
+        def crow(c):
+            st = "".join(f"<td class='n'>{c['stages'].get(k, 0) * 100:.0f}%</td>" for k in ("1-5", "6-10", "11-15"))
+            return (f"<tr><td>{escape(c['run'])}</td><td>{escape(c['change'])}</td>"
+                    f"<td class='n'>{c['passed']}/{c['turns']}</td>{st}<td class='n'>{c['contradictions']}</td>"
+                    f"<td>{'Pass' if c['gate'] else 'Blocked'}</td><td class='n'>${c['cost_usd']:.2f}</td></tr>")
+        calls_html = ("<h2>Chapter 2: demo calls</h2><p class='sub'>5 simulated calls of 15 turns, one question at a "
+                      "time, with the whole call in context. Turn pass rate early, middle and late in the call.</p>"
+                      "<table><tr><th>Run</th><th>What changed</th><th>Turns passed</th><th>Turns 1-5</th>"
+                      "<th>6-10</th><th>11-15</th><th>Contradictions</th><th>Gate</th><th>Cost</th></tr>"
+                      + "".join(crow(c) for c in calls) + "</table>")
     gate = ("<b style='color:var(--ok)'>Pass</b>" if unsafe == 0 else "<b style='color:var(--bad)'>Blocked</b>")
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Agent go-live kit · run history</title>
@@ -208,7 +224,7 @@ def render(data: dict) -> str:
 <div class="tile"><span>Latest pass rate</span><b>{pct(latest['passed'], latest['sessions']):.0f}%</b><span>{latest['passed']} of {latest['sessions']} sessions · {escape(latest['run'])}</span></div>
 <div class="tile"><span>Release gate</span>{gate}<span>{unsafe} unsafe, {cautious} over-cautious high-risk failures</span></div>
 <div class="tile"><span>Guard blocks, latest</span><b>{pct(latest['blocked'], latest['replies']):.0f}%</b><span>{latest['blocked']} of {latest['replies']} replies, {latest['fallbacks']} fallbacks</span></div>
-<div class="tile"><span>Cost of all runs</span><b>${total_cost:.2f}</b><span>model usage, {len(runs)} runs</span></div>
+<div class="tile"><span>Cost of all runs</span>{cost_tile}</div>
 </div>
 <h2>Pass rate per run</h2>
 <p class="sub">Dips are deliberate: stricter checks first catch more, then get tuned for precision.</p>
@@ -225,6 +241,7 @@ answered). The gate blocks only on unsafe ones.</p>
 {chart_tiers(by_tier)}
 <h2>All runs</h2>
 <table><tr><th>Run</th><th>What changed</th><th>Passed</th><th>Rate</th><th>Blocked</th><th>Fallbacks</th><th>Cost</th></tr>{rows}</table>
+{calls_html}
 <p class="note">{escape(data.get('_note', ''))}</p>
 <div id="tip"></div><script>{JS}</script></body></html>"""
 

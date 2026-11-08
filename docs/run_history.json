@@ -1,5 +1,5 @@
 {
- "_note": "Live runs on Nebius Token Factory. Agent and buyer: Qwen/Qwen3-235B-A22B-Instruct-2507; judge: deepseek-ai/DeepSeek-V4-Pro. Built from GitHub Actions run logs, 2026-11-07 to 2026-11-08.",
+ "_note": "Live runs on Nebius Token Factory. Agent and buyer: Qwen/Qwen3-235B-A22B-Instruct-2507; judge: deepseek-ai/DeepSeek-V4-Pro. Built from GitHub Actions run logs, 2026-11-07 to 2026-11-08. Per-run costs for chapter 1 are estimates at list price; they did not count cached input, which is billed far cheaper. Nebius billed $2.34 for those 16 runs. Chapter 2 costs count cached input at the cache price.",
  "runs": [
   {
    "run": "baseline",
@@ -241,5 +241,50 @@
    }
   },
   "_classification": "Failure kinds as classified by the code in the gate-1 run."
- }
+ },
+ "billed_usd": 2.34,
+ "call_runs": [
+  {
+   "run": "calls-baseline",
+   "change": "Calls suite, unchanged agent",
+   "turns": 75,
+   "passed": 58,
+   "stages": {
+    "1-5": 0.84,
+    "6-10": 0.76,
+    "11-15": 0.72
+   },
+   "contradictions": 1,
+   "gate": false,
+   "cost_usd": 0.29
+  },
+  {
+   "run": "calls-fix-1",
+   "change": "Tier carries one turn; park on offer; no unasked handoff",
+   "turns": 75,
+   "passed": 68,
+   "stages": {
+    "1-5": 0.92,
+    "6-10": 0.92,
+    "11-15": 0.88
+   },
+   "contradictions": 2,
+   "gate": false,
+   "cost_usd": 0.32
+  },
+  {
+   "run": "calls-fix-2",
+   "change": "Facts ledger; approved answers by trigger",
+   "turns": 75,
+   "passed": 66,
+   "stages": {
+    "1-5": 0.84,
+    "6-10": 0.88,
+    "11-15": 0.92
+   },
+   "contradictions": 1,
+   "gate": false,
+   "cost_usd": 0.31
+  }
+ ]
 }

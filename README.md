@@ -13,6 +13,10 @@ I built a website sales agent for HiBob (HR software). Then I built what an FDE 
 
 Each change was written test-first and then measured with a full live run.
 
+The work has two chapters. **Chapter 1** tests single questions: 43 short chats of 1–3 turns. **Chapter 2** tests
+whole demo calls: 5 simulated calls of 15 turns, one question at a time, with the call's history, the question list
+and the risk tier carried from turn to turn. The second chapter exists because I found my first test was too easy.
+
 > Built only from public hibob.com pages, summarised into `kb/`. This project is not affiliated with HiBob.
 > The approved answers in `config/approved_answers.json` are drafts waiting for the client's approval.
 
@@ -20,11 +24,11 @@ Each change was written test-first and then measured with a full live run.
 
 | | |
 |---|---|
-| Pass rate | **47% → 98%** (42 of 43 simulated sessions) |
-| Release gate | **Pass**: 0 unsafe high-risk failures |
+| Chapter 1: single questions | **47% → 98%** pass rate (42 of 43 sessions); release gate **passes** |
+| Chapter 2: demo calls | **77% → 88–91%** of 75 turns; late-call turns **72% → 92%**; gate still **blocked** by one contradiction |
 | Judge vs human labels | 14 of 15 agree (93%) |
-| Cost of all 16 live runs | **$10.75** on open-weight models (Nebius) |
-| Tests | 178, all offline (fake model, fake AWS) |
+| Cost | **$2.34 billed** for the 16 chapter 1 runs; about $0.30 per call run (Nebius, open-weight models) |
+| Tests | 232, all offline (fake model, fake AWS) |
 
 ## What the suite caught
 
@@ -101,11 +105,54 @@ The tier is the highest signal from the question keywords, the retrieved section
 
 The dips are deliberate. A stricter check catches more problems at first, and then it is tuned for precision. All 16 runs are in `docs/run_history.json`. `python scripts/plot_runs.py` renders `docs/run_history.html`.
 
+Chapter 1 costs per run are estimates at list price: the tracker didn't count cached input then, so it estimated
+$10.75 for runs that were billed $2.34. It now prices cached input at the cache rate.
+
+## Chapter 2: whole demo calls
+
+Real buyers don't ask one question and leave. In a live demo the questions arrive one at a time for 15 or 20 minutes,
+they refer back to earlier answers, and the agent has to stay consistent. Chapter 1 never tested that.
+
+**The call suite** (`suite/calls.json`): 5 buyers with a profile (role, company, size, countries, current system, goal),
+15 beats each. 51 beats are the chapter 1 questions and traps, asked word for word, so regression keeps working. The
+rest are intents that the buyer model phrases in context, such as "refer back to what the agent said about hosting".
+A request for a person ends the call.
+
+**What is checked:**
+
+- every turn, exactly as in chapter 1 (guard, judge, the beat's expectations);
+- the whole call, by a second judge that reads the transcript and lists every place the agent contradicted itself;
+- the close: open questions must be recapped;
+- time to reply and cost per call.
+
+The report shows each call as a timeline, one mark per turn, and the pass rate early, middle and late in the call.
+
+| Run | What changed | Turns passed | Turns 1–5 | 6–10 | 11–15 | Contradictions |
+|---|---|---|---|---|---|---|
+| calls-baseline | the chapter 1 agent, unchanged | 58/75 | 84% | 76% | 72% | 1 |
+| calls-fix-1 | tier carries one turn; parking on offer; no unasked handoff | 68/75 | 92% | 92% | 88% | 2 |
+| calls-fix-2 | facts ledger; approved answers by trigger | 66/75 | 84% | 88% | 92% | 1 |
+
+**What the calls exposed that single questions couldn't:**
+
+- **A rule that was right for short chats was wrong for calls.** The risk tier only went up, which was sensible over
+  2 turns. Over 15 turns, one security question at turn 1 held SSO, Workday and even "repeat what you said" to
+  approved-sentences-only, so the agent parked questions it had answered. Now a tier carries one turn, then each
+  question stands on its own.
+- **It couldn't repeat itself.** Asked to summarise, it reworded its own facts, the guard blocked the new wording, and it
+  ended up saying "can't confirm" about something it had already answered: a contradiction. It now gets a ledger of
+  the facts it already gave, with their quotes.
+- **Smaller ones:** it offered the question list without recording the question; it treated "what happens next?" as
+  a handoff; inline citations weren't counted.
+
+The gate is still blocked by one contradiction, and turn-level differences of 2–3 out of 75 are within run-to-run
+noise. Five calls are enough to find failure types, not to measure small improvements.
+
 ## Run it
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest -q                                   # 178 tests, no keys needed
+python -m pytest -q                                   # 232 tests, no keys needed
 python -m deploykit run --provider mock --name demo   # plumbing check, scores are meaningless
 ```
 
@@ -118,6 +165,9 @@ python -m deploykit run --provider nebius --name fix-1 --compare-to runs/baselin
 python -m deploykit show runs/fix-1                                        # summary in the terminal
 python -m deploykit sample runs/fix-1 --n 15 && python -m deploykit agreement runs/fix-1
 ```
+
+Whole demo calls: `python -m deploykit calls --provider nebius --name calls-1`, or the `live run` workflow with
+`suite: calls`.
 
 Useful flags for comparisons: `--no-guard`, `--no-tiers` and `--approved`. Providers `anthropic` and `bedrock` are wired up too. Bedrock needs model ids filled in `config/models.json`.
 
@@ -144,15 +194,21 @@ config/client.json       goal, personas, park and handoff rules, glossary, risk 
 config/approved_answers  approved sentences for high-risk topics (drafts)
 config/models.json       model per role and provider, prices
 suite/scenarios.json     43 scenarios: expected, ambiguous, adversarial, regression
-deploykit/               agent, guard, risk, judge, simulator, runner, report, CLI, nightly job
+suite/calls.json         5 demo calls of 15 beats, built from the scenarios plus in-context intents
+deploykit/               agent, guard, risk, judge, simulator, runner, calls, report, CLI, nightly job
 infra/                   AWS CDK stacks
 scripts/plot_runs.py     run-history chart
-tests/                   178 tests, written before the code they cover
+tests/                   232 tests, written before the code they cover
 ```
 
 ## Known limits
 
 - **Simulated buyers aren't real buyers.** The suite is a floor, not proof. The next step is to replay real transcripts.
-- **Backups and disaster recovery.** The model doesn't always pick the right approved sentence, which gives the one over-cautious failure. A planned fix: code pre-selects the candidate sentences for each question.
+- **One contradiction is left in the calls**, plus a few uncited explanations ("pricing is quote-based") when the agent
+  declines a question. Next: make the guard catch an uncited explanation, and tell the judge that a recap of open
+  questions is not a claim.
+- **Five calls are a small sample.** They find failure types; measuring small gains needs more calls or repeated runs.
+- **The chapter 1 numbers are from before the call fixes.** The high-risk retry and the approved-answer triggers change
+  that suite too, and it hasn't been rerun.
 - **The judge is imperfect.** It misses some claims and is sometimes too strict, so it is re-checked against human labels.
 - **The knowledge base is a snapshot.** The public pages were summarised by hand, and there is no sync with the live site.

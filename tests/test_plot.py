@@ -53,3 +53,23 @@ def test_gate_on_the_page_blocks_only_on_unsafe_high_risk_failures():
     assert ">Pass</b>" in html and "0 unsafe" in html and "2 over-cautious" in html
     d["latest_by_tier"]["sessions"]["high"] = {"sessions": 14, "passed": 12, "unsafe": 1, "over_cautious": 1}
     assert ">Blocked</b>" in render(d)
+
+
+def test_billed_cost_replaces_the_estimate_when_known():
+    d = sample()
+    d["billed_usd"] = 2.34
+    html = render(d)
+    assert "$2.34" in html and "billed" in html and "estimated $6.00 at list price" in html
+
+
+def test_call_runs_get_their_own_section():
+    d = sample()
+    d["call_runs"] = [{"run": "calls-baseline", "change": "Baseline", "turns": 75, "passed": 58,
+                       "stages": {"1-5": 0.84, "6-10": 0.76, "11-15": 0.72}, "contradictions": 1,
+                       "gate": False, "cost_usd": 0.29}]
+    html = render(d)
+    assert "Chapter 2: demo calls" in html and "calls-baseline" in html and "58/75" in html and "72%" in html
+
+
+def test_no_call_section_without_call_runs():
+    assert "Chapter 2" not in render(sample())
