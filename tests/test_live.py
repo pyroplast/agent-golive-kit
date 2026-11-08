@@ -75,22 +75,46 @@ def test_sentences_stream_and_are_checked_one_by_one(config, pricing_chunks):
     assert tm["first_words_s"] == tm["first_sentence_s"] and not tm["filler"]
 
 
-def test_a_failing_later_sentence_cuts_the_reply_and_parks(config, pricing_chunks):
+def test_a_failing_later_sentence_is_skipped_and_the_question_parked(config, pricing_chunks):
+    # live-1: stopping at the first bad sentence sent most turns down the slow path. Now a bad sentence is
+    # dropped, the rest still streams, and the question goes on the list.
     clock = Clock()
     bad = {"say": "It costs $9 per employee.", "claims": []}
-    lines = [GOOD, bad, {"say": "Never sent.", "claims": []}, {"end": True}]
+    lines = [GOOD, bad, {"say": "Which countries are you in?", "claims": []}, {"end": True}]
     llm = StreamLLM(lines, clock)
     t = ask(live(config, pricing_chunks, llm, clock), "How is pricing calculated?")
     assert t["reply"].startswith("Bob's pricing is quote-based.") and t["reply"].endswith(SAFE_TAIL)
-    assert "$9" not in t["reply"] and "Never sent" not in t["reply"]
-    assert t["park"] == "How is pricing calculated?" and t["guard"]["cut"] is True
+    assert "$9" not in t["reply"] and "Which countries are you in?" in t["reply"]
+    assert t["park"] == "How is pricing calculated?" and t["guard"]["skipped"] == 1
     assert llm.completes == 0  # what was already said stays said: no rewrite
+
+
+def test_a_failing_first_sentence_is_skipped_if_a_later_one_passes(config, pricing_chunks):
+    clock = Clock()
+    lines = [{"say": "It costs $9 per employee.", "claims": []}, GOOD, {"end": True}]
+    llm = StreamLLM(lines, clock)
+    t = ask(live(config, pricing_chunks, llm, clock), "How is pricing calculated?")
+    assert llm.completes == 0 and "$9" not in t["reply"] and "quote-based" in t["reply"]
+
+
+def test_the_agent_does_not_see_its_own_filler_lines(config, pricing_chunks):
+    clock = Clock()
+    seen = []
+
+    class Spy(StreamLLM):
+        def stream(self, role, system, messages, meta=None):
+            seen.append(messages)
+            return super().stream(role, system, messages, meta)
+    history = [{"role": "user", "content": "Hi"}, {"role": "assistant", "content": FILLER + " Welcome!"},
+               {"role": "user", "content": "How is pricing calculated?"}]
+    live(config, pricing_chunks, Spy([GOOD, {"end": True}], clock), clock).respond(history, "en")
+    assert FILLER not in json.dumps(seen[0])
 
 
 def test_a_failing_first_sentence_takes_the_slow_path_with_a_filler(config, pricing_chunks):
     clock = Clock()
     llm = StreamLLM([{"say": "It costs $9 per employee.", "claims": []}, {"end": True}], clock)
-    t = ask(live(config, pricing_chunks, llm, clock), "How is pricing calculated?")
+    t = ask(live(config, pricing_chunks, llm, clock), "How is pricing calculated?")  # nothing passes
     assert llm.completes >= 1 and t["guard"]["slow_path"] is True
     assert t["reply"].startswith(FILLER) and "$9" not in t["reply"]
     assert t["timing"]["filler"] is True and t["timing"]["first_words_s"] <= 1.5
@@ -174,7 +198,7 @@ def test_run_call_tells_the_agent_who_is_on_the_call(config, chunks):
     llm = MockLLM()
     agent = DemoAgent(config, chunks, llm, retrieval="bm25")
     call = {"id": "c", "persona": "hr_lead", "profile": {"company": "Lumen Studios", "role": "Head of People"},
-            "beats": [{"say": "Hi, I'm Alex from Lumen Studios. Where is the data hosted?"}]}
+            "beats": [{"say": "Hi, I’m Alex from Lumen Studios. Where is the data hosted?"}]}  # curly apostrophe
     run_call(call, agent, Judge(llm, chunks), CallBuyer(llm, config), llm)
     assert {"Lumen", "Studios", "Alex"} <= agent.context_names
 

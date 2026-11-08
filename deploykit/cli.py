@@ -102,7 +102,7 @@ def cmd_calls(a):
     llm, prices = _llm(a)
     run_dir = run_calls(config, load_kb(a.kb), calls, llm, out_dir=a.out, name=a.name, prices=prices,
                         workers=a.workers, retrieval=a.retrieval, provider=a.provider,
-                        guard=not a.no_guard, approved=_approved(a), live=a.live, fast=not a.no_fast)
+                        guard=not a.no_guard, approved=_approved(a), live=a.live, fast=a.fast)
     report = build_report(run_dir)
     s = summarize_calls(load_call_rows(run_dir))
     stages = " · ".join(f"turns {k}: {v['rate']:.0%}" for k, v in s["by_stage"].items() if v["rate"] is not None)
@@ -134,6 +134,9 @@ def _show_calls(a):
                   f"park={bool(ag.get('park'))} handoff={ag['handoff']} grounded={j.get('grounded')} "
                   f"claims={j.get('unsupported_claims')}")
             g = ag.get("guard") or {}
+            if g.get("slow_path") or g.get("skipped"):
+                print(f"    LIVE: {'slow path' if g.get('slow_path') else str(g.get('skipped')) + ' sentence(s) skipped'}: "
+                      f"{[p['type'] + ':' + p['detail'] for p in (g.get('stream_problems') or g.get('first_problems') or [])]}")
             if g.get("retried") or g.get("fell_back"):
                 print(f"    GUARD: {[p['type'] + ':' + p['detail'] for p in g.get('first_problems', [])]}"
                       f" -> {'fallback' if g['fell_back'] else 'fixed on retry'}")
@@ -263,7 +266,8 @@ def build_parser():
     c.add_argument("--out", default=str(ROOT / "runs"))
     c.add_argument("--no-guard", action="store_true")
     c.add_argument("--live", action="store_true", help="stream sentence by sentence, fast model, filler line")
-    c.add_argument("--no-fast", action="store_true", help="live mode without the fast model for easy turns")
+    c.add_argument("--fast", action="store_true", help="live mode: easy turns on the small fast model "
+                   "(off by default: in calls-live-1 its first sentence failed the checks on 17 of 20 turns)")
     c.add_argument("--no-tiers", action="store_true")
     c.add_argument("--approved", default=str(ROOT / "config" / "approved_answers.json"))
     c.set_defaults(fn=cmd_calls)

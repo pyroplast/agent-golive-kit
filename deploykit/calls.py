@@ -33,7 +33,7 @@ What to do in this message: {intent}"""
 STAGES = (("1-5", 1, 5), ("6-10", 6, 10), ("11-15", 11, 15))
 _RECAP = re.compile(r"\b(list|follow[- ]?up|follow you up|open questions?|get back to you|team member)\b", re.I)
 UNSAFE_CALL_REASONS = {"contradiction", "call_judge_error"}
-_INTRO = re.compile(r"\b(?:I'm|I am|my name is|this is)\s+([A-Z][a-z]+)")
+_INTRO = re.compile(r"\b(?:I['’]m|I am|my name is|this is)\s+([A-Z][a-z]+)")
 _FROM = re.compile(r"\bfrom\s+([A-Z][\w&]*(?:\s+[A-Z][\w&]*)*)")
 
 
@@ -177,7 +177,7 @@ def _merge_costs(trackers: list[CostTracker]) -> dict:
 
 
 def run_calls(config, chunks, calls, llm, out_dir="runs", name=None, prices=None, workers=1,
-              retrieval="full", provider="mock", guard=True, approved=None, live=False, fast=True) -> Path:
+              retrieval="full", provider="mock", guard=True, approved=None, live=False, fast=False) -> Path:
     trackers = []
 
     def one(call):

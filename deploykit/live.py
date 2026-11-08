@@ -2,10 +2,12 @@
 
 - The reply streams as JSON lines, one sentence per line with its own claims, and each sentence is checked by the
   guard as soon as its line is complete. A passing sentence is "said" at once.
-- A sentence that fails stops the reply. If nothing was said yet, the slow path runs (the normal draft, guard,
-  retry and approved-answer fallback) behind a short filler line. If something was already said, it stays said and
-  the reply ends with a safe line that parks the rest; nothing is rewritten after the buyer has heard it.
-- Easy (low-risk) turns go to a smaller, faster model; medium and high risk stay on the big model.
+- A sentence that fails is dropped and the rest keeps streaming; the reply then ends with a safe line that parks
+  the question. Nothing is rewritten after the buyer has heard it. Only if no sentence passes does the slow path
+  run (the normal draft, guard, retry and approved-answer fallback) behind a short filler line.
+  (calls-live-1 stopped at the first bad sentence instead: 53 of 75 turns went down the slow path.)
+- Optionally (fast=True), easy low-risk turns go to a smaller, faster model. Off by default: in calls-live-1 the
+  small model's first sentence failed the checks on 17 of 20 turns, which made those turns slower, not faster.
 - If the first sentence takes longer than FILLER_AFTER_S, the filler line goes out first.
 
 In this text simulation "said" means: the time the sentence was ready, measured from the buyer's message.
@@ -49,15 +51,18 @@ class LiveAgent(DemoAgent):
         pre_tier = max_tier(floor or "low", self.policy.question_tier(last_q)) if self.policy else None
         role = "agent_fast" if self.fast and pre_tier in (None, "low") else "agent"
         system = self._system(sources, parked, pre_tier, last_q, ledger).replace(OUTPUT_SPEC, LIVE_SPEC)
+        # The agent never sees its own filler lines, or it starts copying them (calls-live-1 turn 6 said it twice).
+        history = [{**m, "content": m["content"].replace(FILLER, "").strip()} if m["role"] == "assistant" else m
+                   for m in history]
         replay = [{"role": m["role"], "content": json.dumps({"say": m["content"]}, ensure_ascii=False)}
                   if m["role"] == "assistant" else m for m in history]
 
         said, claims, approved_cites, end = [], [], [], {}
-        tier, first_at, problems, failed, cut = pre_tier, None, [], None, False
+        tier, first_at, problems, failed, skipped = pre_tier, None, [], None, 0
         buf, stop = "", False
 
         def handle(line):
-            nonlocal tier, first_at, problems, failed, cut, end
+            nonlocal tier, first_at, problems, failed, skipped, end
             line = line.strip().strip("`")
             if not line:
                 return False
@@ -85,10 +90,10 @@ class LiveAgent(DemoAgent):
             s_tier = (max_tier(pre_tier, self.policy.classify(last_q, mini["citations"], mini["claims"]))
                       if self.policy else None)
             found = self._check(mini, user_text, s_tier)
-            if found:
-                problems, failed = found, say
-                cut = bool(said)
-                return True
+            if found:  # drop this sentence, keep streaming the rest
+                problems, failed = problems + found, failed or say
+                skipped += 1
+                return False
             said.append(say)
             claims.extend(c)
             tier = max_tier(tier or "low", s_tier) if s_tier else tier
@@ -109,7 +114,7 @@ class LiveAgent(DemoAgent):
             filler_at = min(self.clock() - t0, FILLER_AFTER_S)
             turn = DemoAgent._respond(self, history, lang, parked, floor, ledger)
             turn["reply"] = f"{FILLER} {turn['reply']}"
-            turn["guard"] = {**turn.get("guard", {}), "streamed": True, "slow_path": True, "cut": False,
+            turn["guard"] = {**turn.get("guard", {}), "streamed": True, "slow_path": True, "skipped": skipped,
                              "stream_problems": problems, "blocked_sentence": failed}
             turn["model_role"] = "agent"
             turn["timing"] = {"streamed": True, "filler": True, "first_words_s": round(filler_at, 3),
@@ -118,7 +123,7 @@ class LiveAgent(DemoAgent):
 
         reply = " ".join(said)
         park = end.get("park")
-        if cut:
+        if skipped:
             reply = f"{reply} {SAFE_TAIL}"
             park = last_q or None
         filler = first_at > FILLER_AFTER_S
@@ -139,7 +144,7 @@ class LiveAgent(DemoAgent):
             turn["reply"] = (turn["reply"].rstrip() + " " + self.config.get("park_offer", "")).strip()
         total = self.clock() - t0
         turn["guard"] = {"enabled": True, "streamed": True, "retried": False, "fell_back": False, "composed": False,
-                         "slow_path": False, "cut": cut, "first_problems": problems, "final_problems": [],
+                         "slow_path": False, "skipped": skipped, "first_problems": problems, "final_problems": [],
                          "blocked_draft": failed}
         turn["model_role"] = role
         turn["timing"] = {"streamed": True, "filler": filler,
