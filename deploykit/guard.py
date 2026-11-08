@@ -164,8 +164,8 @@ def check_reply(draft: dict, chunks: list[Chunk], user_text: str = "", glossary=
     """glossary: the client's own product and module names, allowed in any sentence (config: glossary).
 
     tier: None keeps the default rules (numbers and names against the cited section, risky words against the
-    quote). "low" relaxes risky words to the section; "medium" requires numbers, names and risky words inside
-    the quote; "high" allows only a pre-approved answer copied word for word (or a park, refusal or handoff).
+    quote). "low" relaxes risky words to the section; "medium" requires numbers and risky words inside the quote
+    (names are checked against the cited section: tier-3 showed product section titles tripping a quote check); "high" allows only a pre-approved answer copied word for word (or a park, refusal or handoff).
     """
     by_id = {c.id: c for c in chunks}
     problems: list[dict] = []
@@ -211,7 +211,7 @@ def check_reply(draft: dict, chunks: list[Chunk], user_text: str = "", glossary=
         for w in sorted(_watch_words(text) - _watch_words(watch_scope) - _watch_words(user_text)):
             add("watch_word", w)
         # Names must come from the cited section. The buyer naming a product does not make it a fact.
-        for n in _missing_names(text, num_scope, glossary):
+        for n in _missing_names(text, section, glossary):
             add("unsupported_name", f"{n} (claim cites {src})")
 
     # Whole-reply pass: nothing in the reply may go beyond the cited material plus the buyer's words.
@@ -223,7 +223,7 @@ def check_reply(draft: dict, chunks: list[Chunk], user_text: str = "", glossary=
     for w in sorted(_watch_words(reply) - _watch_words(watch_cited + " " + user_text)):
         add("watch_word", w)
     for sentence in factual_sentences(str(draft.get("reply", ""))):
-        for n in _missing_names(sentence, cited, glossary):
+        for n in _missing_names(sentence, " ".join(sections), glossary):
             add("unsupported_name", f"{n} (not in any cited section)")
 
     return {"ok": not problems, "problems": problems}

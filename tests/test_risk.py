@@ -281,3 +281,13 @@ def test_citing_an_approved_answer_id_is_not_an_invalid_citation(config, chunks)
         {"id": "legal-advice", "sources": [], "status": "draft", "text": "I can't give legal advice."}]).respond(
         [{"role": "user", "content": "What should we do legally?"}], lang="en")
     assert turn["invalid_citations"] == []
+
+
+def test_medium_checks_names_against_the_section_numbers_against_the_quote(chunks):
+    """tier-3: an OKR answer was parked for naming the product's own 'Performance Management Suite'."""
+    d = {"reply": "Hosted on AWS in Ireland.", "handoff": False, "unknown": False,
+         "claims": [claim("Hosted on AWS in Ireland", "security#2", "Hosted on AWS")]}
+    assert check_reply(d, chunks, "", tier="medium")["ok"]          # Ireland is in the cited section
+    d2 = {"reply": "Hosted on AWS in Ireland, 2 regions.", "handoff": False, "unknown": False,
+          "claims": [claim("Hosted on AWS in Ireland, 2 regions", "security#2", "Hosted on AWS")]}
+    assert "number_not_in_source" in types(check_reply(d2, chunks, "", tier="medium"))
