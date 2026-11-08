@@ -233,3 +233,51 @@ def test_tiered_run_records_tiers_and_reports_the_gate(tmp_path, config, chunks,
     assert all(r["tier"] in ("low", "medium", "high") for r in rows.values())
     html = build_report(run).read_text()
     assert "Release gate" in html and "Results by risk tier" in html
+
+
+# --- tier-2 finding: the model paraphrases approved text. Select, don't write. ------------
+
+def test_high_prompt_lists_approved_sentences_with_ids(config, chunks):
+    llm = SeqLLM(out(reply="Shall I add that to the list?", park="x"))
+    DemoAgent(dict(config, risk=RISK), chunks, llm, approved=APPROVED2).respond(
+        [{"role": "user", "content": "Are you GDPR compliant?"}], lang="en")
+    system = llm.calls[0]["system"]
+    assert "[sec-hosting.1] Bob is hosted on AWS." in system
+    assert "approved_sentences" in system
+
+
+def test_code_composes_the_reply_from_selected_ids(config, chunks):
+    """The model's own wording is discarded; the reply is the approved text, so it cannot drift."""
+    llm = SeqLLM(out(reply="Yeah we're on AWS in Ireland and stuff.",
+                     approved_sentences=["sec-hosting.1", "sec-hosting.2", "sec-hosting.3"]))
+    turn = DemoAgent(dict(config, risk=RISK), chunks, llm, approved=APPROVED2).respond(
+        [{"role": "user", "content": "Is our data's residency in the EU?"}], lang="en")
+    assert turn["reply"] == "Bob is hosted on AWS. The primary region is Ireland; backups are in Germany."
+    assert turn["citations"] == ["security#2"] and turn["guard"]["fell_back"] is False
+    assert len(llm.calls) == 1
+
+
+def test_composed_reply_keeps_the_models_question_and_list_offer(config, chunks):
+    llm = SeqLLM(out(reply="Bob is on AWS. Would you like me to add this question to the list to discuss with a "
+                           "HiBob team member?", approved_sentences=["sec-hosting.1"], park="US-only hosting?"))
+    turn = DemoAgent(dict(config, risk=RISK), chunks, llm, approved=APPROVED2).respond(
+        [{"role": "user", "content": "US-only data residency?"}], lang="en")
+    assert turn["reply"] == ("Bob is hosted on AWS. Would you like me to add this question to the list to discuss "
+                             "with a HiBob team member?")
+    assert turn["park"] == "US-only hosting?"
+
+
+def test_unknown_sentence_ids_are_ignored(config, chunks):
+    llm = SeqLLM(out(reply="Shall I add it to the list?", approved_sentences=["made-up.9"], park="q"))
+    turn = DemoAgent(dict(config, risk=RISK), chunks, llm, approved=APPROVED2).respond(
+        [{"role": "user", "content": "GDPR?"}], lang="en")
+    assert turn["reply"] == "Shall I add it to the list?" and turn["citations"] == []
+
+
+def test_citing_an_approved_answer_id_is_not_an_invalid_citation(config, chunks):
+    """tier-2: the legal refusal cited the approved answer's id as a source and failed."""
+    llm = SeqLLM(out(reply="I can't give legal advice.", citations=["legal-advice"]))
+    turn = DemoAgent(dict(config, risk=RISK), chunks, llm, approved=APPROVED2 + [
+        {"id": "legal-advice", "sources": [], "status": "draft", "text": "I can't give legal advice."}]).respond(
+        [{"role": "user", "content": "What should we do legally?"}], lang="en")
+    assert turn["invalid_citations"] == []

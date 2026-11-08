@@ -133,3 +133,12 @@ def test_session_collects_the_list_and_report_shows_it(tmp_path, config, chunks,
     s = summarize(list(rows.values()))
     assert s["parked_total"] >= 2 and s["human_requests"] == 1
     assert "Questions for the HiBob team" in build_report(run).read_text()
+
+
+def test_code_adds_the_list_offer_to_a_dead_end(config, chunks):
+    """Every live run since park-1 had a dead end ('the sources don't list...' and nothing else)."""
+    llm = SeqLLM(out(reply="The sources do not list any customers in Spain.", unknown=True))
+    turn = DemoAgent(config, chunks, llm).respond([{"role": "user", "content": "Spanish customers?"}], lang="en")
+    assert turn["park"] == "Spanish customers?"
+    assert turn["reply"].startswith("The sources do not list any customers in Spain.")
+    assert "add this question to the list" in turn["reply"]

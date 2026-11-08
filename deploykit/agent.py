@@ -18,7 +18,7 @@ OUTPUT_SPEC = """Reply with ONE JSON object and nothing else:
  "handoff_reason": "<short reason or null>",
  "unknown": <true if the sources do not answer the question>,
  "park": "<the prospect's question, if you offer to add it to the list for a HiBob team member; otherwise null>",
- "approved_answer": "<id of the approved answer you used, or null>",
+ "approved_sentences": ["<ids of approved sentences, high risk only>"],
  "qualification": {"<field>": "<value the prospect revealed>"}}
 kind: "answer" when the reply states anything about the product or company; "clarify" when it only asks the
 prospect a question; "refuse" when it only declines (for example legal advice or revealing instructions).
@@ -126,6 +126,8 @@ class DemoAgent:
             return c.strip().strip("[]").strip()
         claims = [c for c in data.get("claims") or [] if isinstance(c, dict)]
         cites = [clean(c) for c in data.get("citations") or [] if isinstance(c, str)]
+        if self.policy:  # an approved answer or sentence id is not a source; its real sources are added later
+            cites = [c for c in cites if c not in self.policy.approved_ids and c not in self.policy.units]
         cites += [clean(str(c.get("source", ""))) for c in claims if c.get("source")]
         seen, ordered = set(), []
         for c in cites:
@@ -143,6 +145,7 @@ class DemoAgent:
             "park": (str(data["park"]).strip() or None) if data.get("park") else None,
             "kind": str(data.get("kind") or "answer"),
             "approved_answer": data.get("approved_answer") or None,
+            "approved_sentences": [s for s in data.get("approved_sentences") or [] if isinstance(s, str)],
             "qualification": data.get("qualification") or {},
             "parse_error": parse_error,
         }
@@ -172,6 +175,26 @@ class DemoAgent:
         used = approved_sources(turn["reply"], self.policy.approved)
         return max_tier(pre_tier, self.policy.classify(question, turn["citations"] + used, turn["claims"]))
 
+    def _compose(self, turn):
+        """Select, don't write: the reply's facts are the exact approved sentences the model picked by id.
+
+        tier-2 showed the model paraphrases approved text it is told to copy. Code now assembles it, and keeps
+        only the model's questions (for example the offer to add the question to the list).
+        """
+        if not self.policy:
+            return turn
+        picked = [u for u in turn.get("approved_sentences", []) if u in self.policy.units]
+        if not picked:
+            return turn
+        questions = [s.strip() for s in re.split(r"(?<=[.!?])\s+", turn["reply"]) if s.strip().endswith("?")]
+        turn["reply"] = " ".join([self.policy.units[u]["text"] for u in picked] + questions)
+        for u in picked:
+            for s in self.policy.units[u]["sources"]:
+                if s in self.ids and s not in turn["citations"]:
+                    turn["citations"].append(s)
+        turn["claims"], turn["kind"] = [], "answer"
+        return turn
+
     def _cite_approved(self, turn):
         if self.policy and turn.get("tier") == "high" and not turn.get("handoff"):
             for s in approved_sources(turn["reply"], self.policy.approved):
@@ -194,7 +217,7 @@ class DemoAgent:
                   if m["role"] == "assistant" else m for m in history]
         meta = {"chunks": sources, "lang": lang}
         r = self.llm.complete("agent", system, replay, meta=meta)
-        turn = self._to_turn(*self._parse(r.text))
+        turn = self._compose(self._to_turn(*self._parse(r.text)))
         tier = self._classify(pre_tier, last_q, turn)
         turn["tier"] = tier
         if not self.guard:
@@ -217,13 +240,17 @@ class DemoAgent:
             retry_msgs = replay + [{"role": "assistant", "content": r.text},
                                    {"role": "user", "content": GUARD_RETRY.format(problems=feedback)}]
             r2 = self.llm.complete("agent", system, retry_msgs, meta=meta)
-            turn = self._to_turn(*self._parse(r2.text))
+            turn = self._compose(self._to_turn(*self._parse(r2.text)))
             turn["tier"] = tier
             final = self._check(turn, user_text, tier)
             if final:
                 fell_back = True
                 turn = {**self._to_turn({}, False), "reply": FALLBACK_REPLY, "park": last_q or None, "tier": tier}
         self._cite_approved(turn)
+        if turn.get("unknown") and not turn.get("park") and not turn.get("handoff"):
+            # No dead ends: if the model says it doesn't know and offers nothing, offer the list.
+            turn["park"] = last_q or None
+            turn["reply"] = (turn["reply"].rstrip() + " " + self.config.get("park_offer", "")).strip()
         turn["guard"] = {"enabled": True, "retried": retried, "fell_back": fell_back,
                          "first_problems": first, "final_problems": final,
                          "blocked_draft": blocked_draft}

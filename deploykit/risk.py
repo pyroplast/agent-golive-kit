@@ -18,11 +18,11 @@ TIER_RULES = {
             "that the sources do not state."),
     "medium": ("RISK TIER: medium (commercial). Every number and name you state must be inside the words you quote. "
                "If you cannot quote it, offer to add the question to the list."),
-    "high": ("RISK TIER: high (legal, security, compliance, money). State facts ONLY with sentences copied word for "
-             "word from the approved answers below. You may use a single sentence, or combine sentences from several "
-             "answers, and add a short greeting or one question. Do not reword them. If they do not fully answer the "
-             "question, say what they do say and offer to add the question to the list. Never give legal or tax "
-             "advice."),
+    "high": ("RISK TIER: high (legal, security, compliance, money). Do not write facts yourself. Put the ids of the "
+             "approved sentences that answer the question in \"approved_sentences\" (one or several, from any answer); "
+             "the reply is assembled from their exact text. In \"reply\" write only an optional question, such as the "
+             "offer to add the question to the list. If the sentences do not fully answer the question, also set "
+             "\"park\" and offer to add it to the list. Never give legal or tax advice."),
 }
 
 
@@ -33,6 +33,10 @@ def max_tier(*tiers) -> str:
 
 class RiskPolicy:
     def __init__(self, cfg: dict, approved: list[dict] | None = None):
+        from deploykit.guard import _units
+        self.units = {f"{a['id']}.{i}": {"text": u, "sources": a.get("sources", [])}
+                      for a in approved or [] for i, u in enumerate(_units(a["text"]), 1)}
+        self.approved_ids = {a["id"] for a in approved or []}
         self.keywords = {t: [k.lower() for k in cfg.get("keywords", {}).get(t, [])] for t in ("high", "medium")}
         self.section_tiers = cfg.get("section_tiers", {})
         self.default = cfg.get("default", "low")
@@ -68,6 +72,6 @@ class RiskPolicy:
     def prompt_block(self, tier: str) -> str:
         block = TIER_RULES[tier]
         if tier == "high":
-            items = "\n".join(f"- [{a['id']}] {a['text']}" for a in self.approved) or "- (none)"
-            block += "\nApproved answers:\n" + items
+            items = "\n".join(f"- [{uid}] {u['text']}" for uid, u in self.units.items()) or "- (none)"
+            block += "\nApproved sentences (use their ids in approved_sentences):\n" + items
         return block
