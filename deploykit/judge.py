@@ -142,6 +142,9 @@ Reply with ONE JSON object with exactly these keys:
 {"contradictions": [{"turns": [int, int], "detail": str}], "qualification": {str: str}, "notes": str}"""
 
 
+_NOT_A_CONTRADICTION = re.compile(r"\b(?:no|not an?|isn't an?|is not an?)\s+(?:actual\s+|direct\s+|real\s+)?contradiction", re.I)
+
+
 class CallJudge:
     """One verdict per call: consistency across turns, which a per-turn judge cannot see."""
 
@@ -160,7 +163,9 @@ class CallJudge:
             if not isinstance(data.get("contradictions"), list):
                 raise ValueError("no contradictions list")
             def two_turns(c):
-                return isinstance(c, dict) and len({n for n in c.get("turns", []) if isinstance(n, int)}) >= 2
+                if not isinstance(c, dict) or _NOT_A_CONTRADICTION.search(str(c.get("detail", ""))):
+                    return False  # the judge itself says it is not one
+                return len({n for n in c.get("turns", []) if isinstance(n, int)}) >= 2
             return {"contradictions": [c for c in data["contradictions"] if two_turns(c)],
                     "qualification": data.get("qualification") or {}, "notes": str(data.get("notes", "")),
                     "judge_error": False}

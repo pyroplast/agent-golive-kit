@@ -41,6 +41,14 @@ class RiskPolicy:
         self.section_tiers = cfg.get("section_tiers", {})
         self.default = cfg.get("default", "low")
         self.approved = list(approved or [])
+        # Reviewed trigger phrases per approved answer: the only way code itself picks an answer to send.
+        self.triggers = {a["id"]: [t.lower() for t in a.get("triggers", [])] for a in self.approved}
+
+    def matching(self, question: str) -> list[str]:
+        """Approved answers whose trigger phrases appear in the question, in file order."""
+        low = (question or "").lower()
+        return [aid for aid, ts in self.triggers.items()
+                if any(re.search(r"(?<![a-z])" + re.escape(t) + r"(?![a-z])", low) for t in ts)]
 
     def _keyword_tier(self, text: str) -> str:
         low = text.lower()
@@ -69,9 +77,13 @@ class RiskPolicy:
                         *(self.section_tier(c) for c in citations),
                         *(self.claim_tier(c) for c in claims))
 
-    def prompt_block(self, tier: str) -> str:
+    def prompt_block(self, tier: str, question: str | None = None) -> str:
         block = TIER_RULES[tier]
         if tier == "high":
             items = "\n".join(f"- [{uid}] {u['text']}" for uid, u in self.units.items()) or "- (none)"
             block += "\nApproved sentences (use their ids in approved_sentences):\n" + items
+            match = self.matching(question or "")
+            if match:
+                ids = [uid for uid in self.units if uid.split(".")[0] in match]
+                block += ("\nAPPROVED SENTENCES MATCHING THIS QUESTION (start from these): " + ", ".join(ids))
         return block

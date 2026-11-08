@@ -116,8 +116,9 @@ def test_high_risk_draft_gets_one_retry(config, chunks):
 def test_high_risk_retry_that_fails_again_falls_back(config, chunks):
     bad = {"reply": "Data is hosted on AWS in Ireland with annual audits.", "kind": "answer", "claims": []}
     llm = SeqLLM([bad, bad])
-    t = ask(DemoAgent(config, chunks, llm, approved=APPROVED), "Where is our data hosted?")
-    assert t["reply"] == FALLBACK_REPLY and t["guard"]["fell_back"]
+    # a high-risk question with no matching approved answer (with one, see the composed-answer tests below)
+    t = ask(DemoAgent(config, chunks, llm, approved=APPROVED), "Do you run a bug bounty programme?", floor="high")
+    assert len(llm.agent_calls) == 2 and t["reply"] == FALLBACK_REPLY and t["guard"]["fell_back"]
 
 
 # 6. The call judge flags the agent contradicting itself, not the agent correcting the buyer.
@@ -135,3 +136,99 @@ def test_a_contradiction_inside_one_turn_is_dropped(chunks):
     turn = {"n": 1, "user": "q", "agent": {"reply": "a"}}
     out = CallJudge(L()).score({"profile": {}}, [turn])
     assert out["contradictions"] == [{"turns": [6, 14], "detail": "y"}]
+
+
+# --- calls-fix-1 follow-ups ---------------------------------------------------------------------------------
+
+BAD_HIGH = {"reply": "Data is backed up hourly to three continents.", "kind": "answer", "claims": []}
+
+
+def test_every_approved_answer_has_reviewed_trigger_phrases():
+    for a in APPROVED:
+        assert a.get("triggers") and all(t == t.lower() for t in a["triggers"]), a["id"]
+
+
+def test_policy_matches_questions_to_approved_answers_by_trigger(config):
+    from deploykit.risk import RiskPolicy
+    p = RiskPolicy(config["risk"], APPROVED)
+    assert p.matching("What about backups and disaster recovery?") == ["sec-hosting", "sec-backups"]
+    assert p.matching("Do you support SSO? We use Okta.") == ["sec-access"]
+    assert p.matching("Does Bob support OKRs?") == []
+
+
+# 7. When both high-risk drafts fail, code answers with the approved text that matches the question
+#    (c-it-helix: backups and SSO parked twice, which then contradicted the hosting answer).
+
+def test_double_failure_at_high_risk_answers_with_the_matching_approved_text(config, chunks):
+    llm = SeqLLM([BAD_HIGH, BAD_HIGH])
+    t = ask(DemoAgent(config, chunks, llm, approved=APPROVED), "What about backups and disaster recovery?")
+    assert "backed up at least daily" in t["reply"] and t["reply"] != FALLBACK_REPLY
+    assert t["guard"]["composed"] is True and t["guard"]["fell_back"] is False
+
+
+def test_no_matching_approved_answer_still_gives_the_safe_reply(config, chunks):
+    llm = SeqLLM([BAD_HIGH, BAD_HIGH])
+    t = ask(DemoAgent(config, chunks, llm, approved=APPROVED), "Does Bob support OKRs?", floor="high")
+    assert t["reply"] == FALLBACK_REPLY and t["guard"]["fell_back"] is True
+
+
+def test_more_than_two_matches_is_too_broad_to_compose(config, chunks):
+    llm = SeqLLM([BAD_HIGH, BAD_HIGH])
+    q = "Tell me about hosting, backups, SSO, encryption and certifications."
+    assert ask(DemoAgent(config, chunks, llm, approved=APPROVED), q)["reply"] == FALLBACK_REPLY
+
+
+def test_high_risk_prompt_points_at_the_matching_approved_sentences(config, chunks):
+    llm = SeqLLM([{"reply": "Shall I add it to the list?", "kind": "clarify"}])
+    ask(DemoAgent(config, chunks, llm, approved=APPROVED), "Do you support SSO? We use Okta.")
+    # the system prompt is not in agent_calls; check through the policy block instead
+    from deploykit.risk import RiskPolicy
+    block = RiskPolicy(config["risk"], APPROVED).prompt_block("high", question="Do you support SSO? We use Okta.")
+    assert "MATCHING THIS QUESTION" in block and "sec-access.1" in block.split("MATCHING THIS QUESTION")[1]
+
+
+# 8. The agent can repeat itself safely: it gets the facts it already gave in the call, with their quotes
+#    (c-cfo-arcadia turn 14 and c-hr-lumen turn 14: summaries of earlier answers were blocked or declined).
+
+def test_ledger_of_earlier_facts_is_in_the_prompt(config, chunks):
+    seen = {}
+
+    class Spy(SeqLLM):
+        def complete(self, role, system, messages, meta=None):
+            seen.setdefault(role, system)
+            return super().complete(role, system, messages, meta)
+    ledger = [{"turn": 3, "text": "Onboarding steps can differ by country", "source": "pricing#1",
+               "quote": "Core HR"}]
+    DemoAgent(config, chunks, Spy([{"reply": "OK.", "kind": "clarify"}])).respond(
+        [{"role": "user", "content": "Summarise what you told me."}], "en", ledger=ledger)
+    assert "FACTS YOU ALREADY GAVE IN THIS CALL" in seen["agent"]
+    assert "Onboarding steps can differ by country" in seen["agent"] and "turn 3" in seen["agent"]
+
+
+def test_run_call_passes_the_ledger_of_passed_turns(config, chunks):
+    llm = MockLLM()
+    agent = DemoAgent(config, chunks, llm, retrieval="bm25")
+    got = []
+    real = agent.respond
+
+    def spy(history, lang, **kw):
+        got.append(list(kw.get("ledger") or []))
+        return real(history, lang, **kw)
+    agent.respond = spy
+    call = {"id": "c", "persona": "hr_lead", "profile": {},
+            "beats": [{"say": "Where is the data hosted?"}, {"say": "Can you repeat that?"}]}
+    run_call(call, agent, Judge(llm, chunks), CallBuyer(llm, config), llm)
+    assert got[0] == [] and got[1] and got[1][0]["turn"] == 1 and got[1][0]["quote"]
+
+
+# 9. A "contradiction" the judge itself calls no contradiction is dropped (c-cfo-pinecrest).
+
+def test_self_negating_contradiction_is_dropped(chunks):
+    class L:
+        def complete(self, role, system, messages, meta=None):
+            return LLMResponse(json.dumps({"contradictions": [
+                {"turns": [3, 9], "detail": "OKRs in 3, reviews in 9, which is not a direct contradiction. "
+                                            "No actual contradiction found."},
+                {"turns": [6, 7], "detail": "hosted in 6, can't confirm in 7"}]}), 1, 1, "l")
+    out = CallJudge(L()).score({"profile": {}}, [{"n": 1, "user": "q", "agent": {"reply": "a"}}])
+    assert [c["turns"] for c in out["contradictions"]] == [[6, 7]]

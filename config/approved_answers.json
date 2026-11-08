@@ -1,12 +1,167 @@
 [
-  {"id": "sec-certs", "status": "draft, pending client approval", "sources": ["security#1"], "text": "HiBob is ISO 27001:2022 and ISO 27018:2025 certified and has routine SOC 2 Type II audits. The SOC 2 report is available on request under NDA; ISO certificates are available without NDA."},
-  {"id": "sec-compliance", "status": "draft, pending client approval", "sources": ["faq#6", "core#7"], "text": "HiBob states that it complies with ISO 27001, SOC 1 Type 2, SOC 2 Type 2 and HIPAA, and aligns with GDPR principles."},
-  {"id": "sec-hosting", "status": "draft, pending client approval", "sources": ["security#2"], "text": "Bob is hosted on AWS. The primary region is AWS Ireland, the backup region is AWS Germany, and disaster recovery is in AWS Frankfurt. Hosting outside the EU is not described in our public material."},
-  {"id": "sec-encryption", "status": "draft, pending client approval", "sources": ["security#4"], "text": "Data is encrypted with TLS 1.2+ in transit and AES-256 at rest, and financial and salary data is additionally encrypted at the application layer with KMS."},
-  {"id": "sec-access", "status": "draft, pending client approval", "sources": ["security#5"], "text": "Bob supports native login and enterprise SSO, and SSO with 2FA is recommended. Customer admins configure role-based access."},
-  {"id": "sec-backups", "status": "draft, pending client approval", "sources": ["security#3"], "text": "Data is backed up at least daily and is fully restorable."},
-  {"id": "ai-data", "status": "draft, pending client approval", "sources": ["ai#2"], "text": "Bob AI has a zero data retention policy, and HiBob and its AI providers do not use customer data to train models. Admins can turn AI features on or off at any time in AI Settings."},
-  {"id": "ai-decisions", "status": "draft, pending client approval", "sources": ["ai#3"], "text": "Bob AI is not an automated decision-making tool. People make the final decisions on employees and compensation, and write actions require explicit user confirmation."},
-  {"id": "payroll-coverage", "status": "draft, pending client approval", "sources": ["faq#4", "payroll-hub#5"], "text": "Bob runs native payroll in the US and UK. Other countries are handled through Payroll Hub with a third-party payroll provider."},
-  {"id": "legal-advice", "status": "draft, pending client approval", "sources": [], "text": "I can't give legal, tax or employment-law advice. For that, please speak with a qualified adviser."}
+  {
+    "id": "sec-certs",
+    "status": "draft, pending client approval",
+    "sources": [
+      "security#1"
+    ],
+    "text": "HiBob is ISO 27001:2022 and ISO 27018:2025 certified and has routine SOC 2 Type II audits. The SOC 2 report is available on request under NDA; ISO certificates are available without NDA.",
+    "triggers": [
+      "certification",
+      "certifications",
+      "certified",
+      "iso",
+      "soc 2",
+      "soc2",
+      "soc 2 report",
+      "audit",
+      "audits"
+    ]
+  },
+  {
+    "id": "sec-compliance",
+    "status": "draft, pending client approval",
+    "sources": [
+      "faq#6",
+      "core#7"
+    ],
+    "text": "HiBob states that it complies with ISO 27001, SOC 1 Type 2, SOC 2 Type 2 and HIPAA, and aligns with GDPR principles.",
+    "triggers": [
+      "hipaa",
+      "gdpr",
+      "compliant",
+      "compliance",
+      "soc 1"
+    ]
+  },
+  {
+    "id": "sec-hosting",
+    "status": "draft, pending client approval",
+    "sources": [
+      "security#2"
+    ],
+    "text": "Bob is hosted on AWS. The primary region is AWS Ireland, the backup region is AWS Germany, and disaster recovery is in AWS Frankfurt. Hosting outside the EU is not described in our public material.",
+    "triggers": [
+      "hosted",
+      "hosting",
+      "host our",
+      "host the",
+      "data residency",
+      "region",
+      "where is our data",
+      "where would it be stored",
+      "stored",
+      "disaster recovery"
+    ]
+  },
+  {
+    "id": "sec-encryption",
+    "status": "draft, pending client approval",
+    "sources": [
+      "security#4"
+    ],
+    "text": "Data is encrypted with TLS 1.2+ in transit and AES-256 at rest, and financial and salary data is additionally encrypted at the application layer with KMS.",
+    "triggers": [
+      "encrypt",
+      "encrypted",
+      "encryption",
+      "tls",
+      "aes"
+    ]
+  },
+  {
+    "id": "sec-access",
+    "status": "draft, pending client approval",
+    "sources": [
+      "security#5"
+    ],
+    "text": "Bob supports native login and enterprise SSO, and SSO with 2FA is recommended. Customer admins configure role-based access.",
+    "triggers": [
+      "sso",
+      "single sign-on",
+      "okta",
+      "2fa",
+      "two-factor",
+      "mfa",
+      "login",
+      "role-based access"
+    ]
+  },
+  {
+    "id": "sec-backups",
+    "status": "draft, pending client approval",
+    "sources": [
+      "security#3"
+    ],
+    "text": "Data is backed up at least daily and is fully restorable.",
+    "triggers": [
+      "backup",
+      "backups",
+      "backed up",
+      "disaster recovery",
+      "restore"
+    ]
+  },
+  {
+    "id": "ai-data",
+    "status": "draft, pending client approval",
+    "sources": [
+      "ai#2"
+    ],
+    "text": "Bob AI has a zero data retention policy, and HiBob and its AI providers do not use customer data to train models. Admins can turn AI features on or off at any time in AI Settings.",
+    "triggers": [
+      "train on",
+      "trains on",
+      "training",
+      "retention",
+      "retain",
+      "keeps it forever",
+      "switch it off",
+      "turn off",
+      "ai settings",
+      "ai safe",
+      "is your ai"
+    ]
+  },
+  {
+    "id": "ai-decisions",
+    "status": "draft, pending client approval",
+    "sources": [
+      "ai#3"
+    ],
+    "text": "Bob AI is not an automated decision-making tool. People make the final decisions on employees and compensation, and write actions require explicit user confirmation.",
+    "triggers": [
+      "decide who",
+      "decides who",
+      "automated decision",
+      "automatically fire",
+      "fire our",
+      "ai decide"
+    ]
+  },
+  {
+    "id": "payroll-coverage",
+    "status": "draft, pending client approval",
+    "sources": [
+      "faq#4",
+      "payroll-hub#5"
+    ],
+    "text": "Bob runs native payroll in the US and UK. Other countries are handled through Payroll Hub with a third-party payroll provider.",
+    "triggers": [
+      "payroll"
+    ]
+  },
+  {
+    "id": "legal-advice",
+    "status": "draft, pending client approval",
+    "sources": [],
+    "text": "I can't give legal, tax or employment-law advice. For that, please speak with a qualified adviser.",
+    "triggers": [
+      "legally",
+      "tribunal",
+      "lawyer",
+      "employment law",
+      "legal advice"
+    ]
+  }
 ]

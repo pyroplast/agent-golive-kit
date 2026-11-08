@@ -169,8 +169,8 @@ class DemoAgent:
         return check_reply(turn, self.chunks, user_text, self.glossary, tier=tier, approved=approved)["problems"]
 
     def respond(self, history: list[dict], lang: str, parked: list[str] | None = None,
-                floor: str | None = None) -> dict:
-        turn = self._respond(history, lang, parked or [], floor)
+                floor: str | None = None, ledger: list[dict] | None = None) -> dict:
+        turn = self._respond(history, lang, parked or [], floor, ledger or [])
         last = history[-1]["content"] if history and history[-1]["role"] == "user" else ""
         if turn.get("handoff") and not asks_for_human(last):
             # Only an explicit request for a person ends in a handoff (calls-baseline: "What happens next?" did).
@@ -220,15 +220,36 @@ class DemoAgent:
                     turn["citations"].append(s)
         return turn
 
-    def _system(self, sources, parked, tier):
+    def _system(self, sources, parked, tier, question="", ledger=None):
         system = build_system_prompt(self.config, sources, parked)
-        return system + ("\n\n" + self.policy.prompt_block(tier) if self.policy and tier else "")
+        if ledger:
+            facts = "\n".join(f"- turn {f['turn']}: {f['text']} [source {f['source']}; quote: \"{f['quote']}\"]"
+                              for f in ledger[-30:])
+            system += ("\n\nFACTS YOU ALREADY GAVE IN THIS CALL. When the prospect asks you to repeat, summarise or "
+                       "build on an earlier answer, reuse these claims with the same source and quote, and do not "
+                       "contradict them:\n" + facts)
+        return system + ("\n\n" + self.policy.prompt_block(tier, question) if self.policy and tier else "")
 
-    def _respond(self, history: list[dict], lang: str, parked: list[str], floor: str | None = None) -> dict:
+    def _compose_matching(self, question):
+        """Both drafts failed: answer with the approved text whose trigger phrases match the question.
+
+        Only for one or two matches; anything broader is too unspecific to answer for the buyer, so it is parked.
+        """
+        match = self.policy.matching(question) if self.policy else []
+        if not 1 <= len(match) <= 2:
+            return None
+        texts = {a["id"]: a for a in self.policy.approved}
+        turn = self._to_turn({"reply": " ".join(texts[m]["text"] for m in match), "kind": "answer"}, False)
+        turn["citations"] = [s for m in match for s in texts[m].get("sources", []) if s in self.ids]
+        turn["approved_answer"] = match
+        return turn
+
+    def _respond(self, history: list[dict], lang: str, parked: list[str], floor: str | None = None,
+                 ledger: list[dict] | None = None) -> dict:
         sources = self.sources_for(history)
         last_q = history[-1]["content"] if history and history[-1]["role"] == "user" else ""
         pre_tier = max_tier(floor or "low", self.policy.question_tier(last_q)) if self.policy else None
-        system = self._system(sources, parked, pre_tier)
+        system = self._system(sources, parked, pre_tier, last_q, ledger)
         # Replay the agent's own earlier turns in the JSON shape it must keep producing.
         # With plain-text history the model drifted out of the format on follow-up turns.
         replay = [{"role": m["role"], "content": json.dumps({"reply": m["content"]}, ensure_ascii=False)}
@@ -248,14 +269,14 @@ class DemoAgent:
 
         user_text = " ".join(m["content"] for m in history if m["role"] == "user")
         first = self._check(turn, user_text, tier)
-        final, retried, fell_back, blocked_draft = first, False, False, None
+        final, retried, fell_back, blocked_draft, composed = first, False, False, None, False
         if first:
             # One retry at every tier, high included (calls-baseline: a recap of an earlier hosting answer fell
             # straight to the safe reply). The retry prompt carries the approved sentences at high risk.
             retried = True
             blocked_draft = turn["reply"]
             if tier != pre_tier:
-                system = self._system(sources, parked, tier)
+                system = self._system(sources, parked, tier, last_q, ledger)
             feedback = "; ".join(f"{p['type']}: {p['detail']}" for p in first)
             retry_msgs = replay + [{"role": "assistant", "content": r.text},
                                    {"role": "user", "content": GUARD_RETRY.format(problems=feedback)}]
@@ -263,7 +284,11 @@ class DemoAgent:
             turn = self._compose(self._to_turn(*self._parse(r2.text)))
             turn["tier"] = tier
             final = self._check(turn, user_text, tier)
-            if final:
+            # Approved text is safe at any tier, so a matching approved answer beats the safe reply.
+            composed_turn = self._compose_matching(last_q) if final else None
+            if composed_turn is not None and not self._check(composed_turn, user_text, tier):
+                composed, turn = True, {**composed_turn, "tier": tier}
+            elif final:
                 fell_back = True
                 turn = {**self._to_turn({}, False), "reply": FALLBACK_REPLY, "park": last_q or None, "tier": tier}
         turn["own_tier"] = own_tier
@@ -272,7 +297,7 @@ class DemoAgent:
             # No dead ends: if the model says it doesn't know and offers nothing, offer the list.
             turn["park"] = last_q or None
             turn["reply"] = (turn["reply"].rstrip() + " " + self.config.get("park_offer", "")).strip()
-        turn["guard"] = {"enabled": True, "retried": retried, "fell_back": fell_back,
+        turn["guard"] = {"enabled": True, "retried": retried, "fell_back": fell_back, "composed": composed,
                          "first_problems": first, "final_problems": final,
                          "blocked_draft": blocked_draft}
         return turn

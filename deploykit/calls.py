@@ -112,12 +112,13 @@ def call_verdict(turns: list[dict], parked: list[str], call_judge: dict) -> dict
 def run_call(call: dict, agent, judge, buyer, llm, call_judge=None, cost=None) -> dict:
     call_judge = call_judge or CallJudge(llm)
     history, turns, parked, tier, floor, ended = [], [], [], None, None, "complete"
+    ledger = []  # facts the agent gave in passed turns, so it can repeat itself without rewording
     for n, beat in enumerate(call["beats"], 1):
         history.append({"role": "user", "content": buyer.message(call, beat, history)})
         parked_before = list(parked)
         retrieved = [c.id for c in agent.sources_for(history)] if agent.index is not None else ["(full kb)"]
         start = time.perf_counter()
-        a = agent.respond(history, "en", parked=list(parked), floor=floor)
+        a = agent.respond(history, "en", parked=list(parked), floor=floor, ledger=list(ledger))
         latency = round(time.perf_counter() - start, 3)
         if a.get("tier"):
             tier = max_tier(tier or "low", a["tier"])  # the highest stakes the call reached
@@ -131,7 +132,11 @@ def run_call(call: dict, agent, judge, buyer, llm, call_judge=None, cost=None) -
                 "parked_before": parked_before, "retrieved": retrieved, "latency_s": latency,
                 "agent": a, "judge": j}
         turn["verdict"] = turn_verdict(beat, turn)
+        turn["ledger_size"] = len(ledger)
         turns.append(turn)
+        if turn["verdict"]["passed"]:
+            ledger += [{"turn": n, "text": str(c.get("text", "")), "source": str(c.get("source", "")),
+                        "quote": str(c.get("quote", ""))} for c in a.get("claims", []) if c.get("quote")]
         history.append({"role": "assistant", "content": a["reply"]})
         if a.get("handoff"):
             ended = "handoff"
