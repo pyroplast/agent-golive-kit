@@ -148,11 +148,40 @@ The report shows each call as a timeline, one mark per turn, and the pass rate e
 The gate is still blocked by one contradiction, and turn-level differences of 2–3 out of 75 are within run-to-run
 noise. Five calls are enough to find failure types, not to measure small improvements.
 
+## Live mode: how fast it answers
+
+The judges grade replies after the fact, so they never slow the buyer down. What the buyer waits for is the agent
+(one model call), the guard (code, milliseconds) and a second model call when the guard blocks the first draft.
+`python -m deploykit calls --live` adds what a real-time call needs:
+
+- **Sentence by sentence.** The reply streams as JSON lines, evidence first and then the sentence. Each sentence is
+  checked as soon as its line is complete and is "said" at once. A failing sentence is dropped, the rest keeps
+  streaming, and the question goes on the list. Nothing is rewritten after the buyer has heard it.
+- **Slow path behind a filler.** Only if no sentence passes does the normal draft-check-retry path run, after a
+  short "Good question, let me check that properly." The same line goes out if the first sentence takes over 1.5 s.
+- **Fewer retries.** The buyer's own company and attendee names, places and languages no longer count as invented
+  names. That was 39 of the guard's blocks in calls-fix-2.
+- **A small fast model for easy turns** (`--fast`, Qwen3-30B-A3B). Off by default: its first sentence failed the
+  checks on 17 of 20 turns, so those turns got slower.
+
+| Run | Turns passed | Reply complete, median | 9 in 10 under | First words, median | 9 in 10 under | Filler used |
+|---|---|---|---|---|---|---|
+| calls-fix-2 (before) | 66/75 | 2.6 s | 5.2 s | 2.6 s | 5.2 s | 0 |
+| calls-fix-3 (name fix only) | 66/75 | 2.0 s | 3.9 s | 2.0 s | 3.9 s | 0 |
+| calls-live-1 | 68/75 | 3.6 s | 5.7 s | 1.3 s | 1.5 s | 54 |
+| calls-live-2 | 64/75 | 2.3 s | 4.7 s | 1.0 s | 1.5 s | 41 |
+| calls-live-3 | 67/75 | 1.3 s | 4.2 s | 1.0 s | 1.4 s | 28 |
+
+Times are measured from GitHub's US runners to Nebius in Europe, so they include the transatlantic round trip
+(roughly 0.1–0.2 s per call). Still open: a third of turns still need the filler, mostly at high risk when the model
+writes sentences instead of picking approved ones, and the slow path can park a question that a later turn
+answers, which the call judge counts as a contradiction.
+
 ## Run it
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest -q                                   # 232 tests, no keys needed
+python -m pytest -q                                   # 252 tests, no keys needed
 python -m deploykit run --provider mock --name demo   # plumbing check, scores are meaningless
 ```
 
@@ -198,7 +227,7 @@ suite/calls.json         5 demo calls of 15 beats, built from the scenarios plus
 deploykit/               agent, guard, risk, judge, simulator, runner, calls, report, CLI, nightly job
 infra/                   AWS CDK stacks
 scripts/plot_runs.py     run-history chart
-tests/                   232 tests, written before the code they cover
+tests/                   252 tests, written before the code they cover
 ```
 
 ## Known limits

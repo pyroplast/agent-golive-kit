@@ -285,6 +285,62 @@
    "contradictions": 1,
    "gate": false,
    "cost_usd": 0.31
+  },
+  {
+   "run": "calls-fix-3",
+   "change": "Buyer's names, places and languages are not invented names",
+   "turns": 75,
+   "passed": 66,
+   "stages": {
+    "1-5": 0.88,
+    "6-10": 0.84,
+    "11-15": 0.92
+   },
+   "contradictions": 1,
+   "gate": false,
+   "cost_usd": 0.33
+  },
+  {
+   "run": "calls-live-1",
+   "change": "Live: stream sentences, fast model, filler",
+   "turns": 75,
+   "passed": 68,
+   "stages": {
+    "1-5": 0.88,
+    "6-10": 0.92,
+    "11-15": 0.92
+   },
+   "contradictions": 2,
+   "gate": false,
+   "cost_usd": 0.38
+  },
+  {
+   "run": "calls-live-2",
+   "change": "Live: skip a bad sentence; fast model off",
+   "turns": 75,
+   "passed": 64,
+   "stages": {
+    "1-5": 0.76,
+    "6-10": 0.96,
+    "11-15": 0.84
+   },
+   "contradictions": 2,
+   "gate": false,
+   "cost_usd": 0.38
+  },
+  {
+   "run": "calls-live-3",
+   "change": "Live: evidence before each sentence",
+   "turns": 75,
+   "passed": 67,
+   "stages": {
+    "1-5": 0.8,
+    "6-10": 1.0,
+    "11-15": 0.88
+   },
+   "contradictions": 3,
+   "gate": false,
+   "cost_usd": 0.34
   }
  ]
 }
