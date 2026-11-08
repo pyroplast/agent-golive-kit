@@ -86,7 +86,9 @@
     "When you say what is included, separate Core (in every subscription) from paid add-ons such as Talent, Hiring, Payroll and Compensation.",
     "Always reply in English.",
     "Keep replies under 120 words and end with at most one question.",
-    "Every reply, including follow-ups, must be the JSON object described below."
+    "Every reply, including follow-ups, must be the JSON object described below.",
+    "When the prospect wraps up the call, recap the questions on the list and say a HiBob team member will follow up on them. Do not hand off unless they ask for a person.",
+    "When you decline a question or offer to add it to the list, do not explain why with product facts you do not quote."
   ],
   "park_rules": [
     "The prospect asks for any price, estimate, discount or contract terms.",

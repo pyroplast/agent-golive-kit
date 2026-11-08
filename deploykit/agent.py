@@ -49,6 +49,15 @@ _HUMAN = [re.compile(p, re.I) for p in (
 )]
 
 
+_OFFER = re.compile(r"\badd\b[^.?!]{0,100}\bto (?:the|our|a|my) list\b", re.I)
+_INLINE_CITE = re.compile(r"\[([A-Za-z0-9_-]+#\d+)\]")
+
+
+def offers_list(reply: str) -> bool:
+    """The reply offers to add the question to the list for a HiBob team member."""
+    return bool(_OFFER.search(reply or ""))
+
+
 def asks_for_human(text: str) -> bool:
     """Explicit request for a person. Deliberately ignores HR vocabulary like 'human resources'."""
     return any(p.search(text) for p in _HUMAN)
@@ -129,6 +138,7 @@ class DemoAgent:
         if self.policy:  # an approved answer or sentence id is not a source; its real sources are added later
             cites = [c for c in cites if c not in self.policy.approved_ids and c not in self.policy.units]
         cites += [clean(str(c.get("source", ""))) for c in claims if c.get("source")]
+        cites += _INLINE_CITE.findall(str(data.get("reply", "")))  # [chunk#n] written into the reply
         if self.policy:
             cites = [c for c in cites if c not in self.policy.approved_ids and c not in self.policy.units]
         seen, ordered = set(), []
@@ -162,6 +172,12 @@ class DemoAgent:
                 floor: str | None = None) -> dict:
         turn = self._respond(history, lang, parked or [], floor)
         last = history[-1]["content"] if history and history[-1]["role"] == "user" else ""
+        if turn.get("handoff") and not asks_for_human(last):
+            # Only an explicit request for a person ends in a handoff (calls-baseline: "What happens next?" did).
+            turn.update(handoff=False, handoff_reason=None)
+        if not turn.get("park") and not turn.get("handoff") and offers_list(turn.get("reply", "")):
+            # The reply offers the list, so the question goes on it, whatever the model put in "park".
+            turn["park"] = last or None
         if asks_for_human(last):
             # A person always gets a person, whatever the model said. Pass the open questions on.
             items = list(parked or []) + ([turn["park"]] if turn.get("park") else [])
@@ -222,6 +238,10 @@ class DemoAgent:
         turn = self._compose(self._to_turn(*self._parse(r.text)))
         tier = self._classify(pre_tier, last_q, turn)
         turn["tier"] = tier
+        # The tier of this question on its own, without the floor carried in from the turn before.
+        own_tier = (self.policy.classify(last_q, turn["citations"] + approved_sources(turn["reply"], self.policy.approved),
+                                         turn["claims"]) if self.policy else None)
+        turn["own_tier"] = own_tier
         if not self.guard:
             turn["guard"] = {"enabled": False}
             return turn
@@ -229,11 +249,9 @@ class DemoAgent:
         user_text = " ".join(m["content"] for m in history if m["role"] == "user")
         first = self._check(turn, user_text, tier)
         final, retried, fell_back, blocked_draft = first, False, False, None
-        if first and tier == "high" and pre_tier == "high":
-            # High risk, and the prompt already carried the approved answers: no second attempt, park now.
-            blocked_draft, fell_back = turn["reply"], True
-            turn = {**self._to_turn({}, False), "reply": FALLBACK_REPLY, "park": last_q or None, "tier": tier}
-        elif first:
+        if first:
+            # One retry at every tier, high included (calls-baseline: a recap of an earlier hosting answer fell
+            # straight to the safe reply). The retry prompt carries the approved sentences at high risk.
             retried = True
             blocked_draft = turn["reply"]
             if tier != pre_tier:
@@ -248,6 +266,7 @@ class DemoAgent:
             if final:
                 fell_back = True
                 turn = {**self._to_turn({}, False), "reply": FALLBACK_REPLY, "park": last_q or None, "tier": tier}
+        turn["own_tier"] = own_tier
         self._cite_approved(turn)
         if turn.get("unknown") and not turn.get("park") and not turn.get("handoff"):
             # No dead ends: if the model says it doesn't know and offers nothing, offer the list.

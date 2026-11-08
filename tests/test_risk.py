@@ -179,12 +179,15 @@ def agent(config, chunks, llm):
     return DemoAgent(cfg, chunks, llm, approved=APPROVED)
 
 
-def test_high_tier_failure_parks_without_retrying(config, chunks):
-    llm = SeqLLM(out(reply="HiBob holds HIPAA certifications.",
-                     claims=[claim("HiBob holds HIPAA certifications", "security#1", "SOC 2 Type II audits")]))
+def test_high_tier_failure_retries_once_then_parks(config, chunks):
+    # Was: no retry at high risk (to save tokens). calls-baseline showed it parks answers the agent can give
+    # with approved sentences, so high risk now gets one retry like every other tier.
+    bad = out(reply="HiBob holds HIPAA certifications.",
+              claims=[claim("HiBob holds HIPAA certifications", "security#1", "SOC 2 Type II audits")])
+    llm = SeqLLM(bad, bad)
     turn = agent(config, chunks, llm).respond([{"role": "user", "content": "Are you HIPAA certified?"}], lang="en")
-    assert len(llm.calls) == 1
-    assert turn["tier"] == "high" and turn["guard"]["fell_back"] is True and turn["guard"]["retried"] is False
+    assert len(llm.calls) == 2
+    assert turn["tier"] == "high" and turn["guard"]["fell_back"] is True and turn["guard"]["retried"] is True
     assert turn["park"] == "Are you HIPAA certified?"
 
 

@@ -111,17 +111,19 @@ def call_verdict(turns: list[dict], parked: list[str], call_judge: dict) -> dict
 
 def run_call(call: dict, agent, judge, buyer, llm, call_judge=None, cost=None) -> dict:
     call_judge = call_judge or CallJudge(llm)
-    history, turns, parked, tier, ended = [], [], [], None, "complete"
+    history, turns, parked, tier, floor, ended = [], [], [], None, None, "complete"
     for n, beat in enumerate(call["beats"], 1):
         history.append({"role": "user", "content": buyer.message(call, beat, history)})
         parked_before = list(parked)
         retrieved = [c.id for c in agent.sources_for(history)] if agent.index is not None else ["(full kb)"]
         start = time.perf_counter()
-        a = agent.respond(history, "en", parked=list(parked), floor=tier)
+        a = agent.respond(history, "en", parked=list(parked), floor=floor)
         latency = round(time.perf_counter() - start, 3)
         if a.get("tier"):
-            tier = max_tier(tier or "low", a["tier"])
-            a["tier"] = tier  # the tier a turn is held to is the call's tier so far
+            tier = max_tier(tier or "low", a["tier"])  # the highest stakes the call reached
+        # The next turn inherits this question's own tier, so a direct follow-up keeps its stakes. It does not
+        # inherit the floor: one security question must not hold the rest of the call to security rules.
+        floor = a.get("own_tier")
         if a.get("park") and a["park"] not in parked:
             parked.append(a["park"])
         j = judge.score({"category": "call", "id": call["id"]}, "en", history, a)

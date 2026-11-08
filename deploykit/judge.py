@@ -132,7 +132,8 @@ against the sources; your job is the call as a whole. Be strict and literal.
 - contradictions: every place where the agent said something in one turn that contradicts or is incompatible
   with what it said in another turn (for example "supported" in turn 3 and "not supported" in turn 12, or two
   different numbers for the same thing). Give the turn numbers and a short detail. Empty list if none.
-  Declining to answer something it answered earlier also counts.
+  Declining to answer something it answered earlier also counts. Only the agent against itself, in
+  two different turns: correcting the buyer, or disagreeing with what the buyer claims, is NOT a contradiction.
 - qualification: what the agent learned about the buyer's company (size, countries, current system,
   modules of interest, timeline), as short values. Only what the buyer actually said.
 - notes: one short sentence on how the call went.
@@ -158,7 +159,9 @@ class CallJudge:
             data = parse_json(r.text)
             if not isinstance(data.get("contradictions"), list):
                 raise ValueError("no contradictions list")
-            return {"contradictions": [c for c in data["contradictions"] if isinstance(c, dict)],
+            def two_turns(c):
+                return isinstance(c, dict) and len({n for n in c.get("turns", []) if isinstance(n, int)}) >= 2
+            return {"contradictions": [c for c in data["contradictions"] if two_turns(c)],
                     "qualification": data.get("qualification") or {}, "notes": str(data.get("notes", "")),
                     "judge_error": False}
         except ValueError:
