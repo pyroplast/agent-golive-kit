@@ -114,6 +114,7 @@ class DemoAgent:
         # Risk tiers switch on when approved answers are supplied and the config has a risk section.
         self.policy = RiskPolicy(config["risk"], approved) if approved is not None and "risk" in config else None
         self.glossary = set(config.get("glossary", []))
+        self.context_names: set[str] = set()  # the buyer's company and attendee names, set per call
         self.retrieval, self.k = retrieval, k
         self.ids = {c.id for c in chunks}
         self.index = BM25Index(chunks) if retrieval == "bm25" else None
@@ -166,7 +167,8 @@ class DemoAgent:
         if turn["parse_error"]:
             return [{"type": "parse_error", "detail": "output was not the JSON object"}]
         approved = self.policy.approved if self.policy else None
-        return check_reply(turn, self.chunks, user_text, self.glossary, tier=tier, approved=approved)["problems"]
+        return check_reply(turn, self.chunks, user_text, self.glossary, tier=tier, approved=approved,
+                           context_names=self.context_names)["problems"]
 
     def respond(self, history: list[dict], lang: str, parked: list[str] | None = None,
                 floor: str | None = None, ledger: list[dict] | None = None) -> dict:

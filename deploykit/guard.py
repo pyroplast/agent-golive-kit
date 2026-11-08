@@ -159,8 +159,16 @@ def _check_high(draft: dict, approved: list[dict], add) -> None:
         add("high_risk_unapproved", "claims without approved sentences")
 
 
+# Places and languages are not product names; claims about them are still checked by quotes and the judge.
+# (calls-fix-2: 39 of the guard's blocks were "invented names" like Spain, Germany or the buyer's own company.)
+GEO_NAMES = frozenset("""UK US USA EU Europe European Britain British England English Ireland Irish Scotland Wales
+Spain Spanish Germany German France French Portugal Portuguese Poland Polish Netherlands Dutch Italy Italian Sweden
+Swedish Israel Hebrew America American Canada Canadian Australia Australian Frankfurt London Barcelona Madrid Berlin
+Lisbon Warsaw Amsterdam Dublin Paris""".split())
+
+
 def check_reply(draft: dict, chunks: list[Chunk], user_text: str = "", glossary=frozenset(),
-                tier: str | None = None, approved: list[dict] | None = None) -> dict:
+                tier: str | None = None, approved: list[dict] | None = None, context_names=frozenset()) -> dict:
     """glossary: the client's own product and module names, allowed in any sentence (config: glossary).
 
     tier: None keeps the default rules (numbers and names against the cited section, risky words against the
@@ -216,7 +224,7 @@ def check_reply(draft: dict, chunks: list[Chunk], user_text: str = "", glossary=
         for w in sorted(_watch_words(text) - _watch_words(watch_scope) - _watch_words(user_text)):
             add("watch_word", w)
         # Names must come from the cited section. The buyer naming a product does not make it a fact.
-        for n in _missing_names(text, section, glossary):
+        for n in _missing_names(text, section, set(glossary) | set(context_names) | GEO_NAMES):
             add("unsupported_name", f"{n} (claim cites {src})")
 
     # Whole-reply pass: nothing in the reply may go beyond the cited material plus the buyer's words.
@@ -228,7 +236,7 @@ def check_reply(draft: dict, chunks: list[Chunk], user_text: str = "", glossary=
     for w in sorted(_watch_words(reply) - _watch_words(watch_cited + " " + user_text)):
         add("watch_word", w)
     for sentence in factual_sentences(str(draft.get("reply", ""))):
-        for n in _missing_names(sentence, " ".join(sections), glossary):
+        for n in _missing_names(sentence, " ".join(sections), set(glossary) | set(context_names) | GEO_NAMES):
             add("unsupported_name", f"{n} (not in any cited section)")
 
     return {"ok": not problems, "problems": problems}

@@ -26,9 +26,23 @@ class LLMResponse:
 class MockLLM:
     """Deterministic stand-in for a model. Good enough to test the plumbing."""
 
+    def stream(self, role, system, messages, meta=None, usage_out=None):
+        """Streams the same reply as complete(), as JSON lines when the live format is asked for."""
+        r = self.complete(role, system, messages, meta)
+        text = r.text
+        if "ONE LINE PER SENTENCE" in system:
+            obj = json.loads(text)
+            lines = [{"say": obj.get("reply", ""), "claims": obj.get("claims", [])},
+                     {"end": True, **{k: obj.get(k) for k in ("kind", "park", "handoff", "unknown")}}]
+            text = "".join(json.dumps(l) + "\n" for l in lines)
+        if usage_out is not None:
+            usage_out.update(input_tokens=r.input_tokens, output_tokens=r.output_tokens, model=r.model)
+        for i in range(0, len(text), 40):
+            yield text[i:i + 40]
+
     def complete(self, role, system, messages, meta=None):
         meta = meta or {}
-        if role == "agent":
+        if role in ("agent", "agent_fast"):
             text = self._agent(messages, meta)
         elif role == "judge":
             text = self._judge(meta)
@@ -135,8 +149,28 @@ class OpenAICompatLLM:
             client = OpenAI(base_url=base_url, api_key=os.environ[api_key_env])
         self.client = client
 
+    def stream(self, role, system, messages, meta=None, usage_out=None):
+        model = self.models.get(role) or self.models["agent"]
+        resp = self.client.chat.completions.create(
+            model=model, temperature=0, stream=True, stream_options={"include_usage": True},
+            max_tokens=MAX_TOKENS.get(role, 800) * self.token_multiplier,
+            messages=[{"role": "system", "content": system}, *messages],
+        )
+        for ch in resp:
+            if getattr(ch, "choices", None):
+                piece = getattr(ch.choices[0].delta, "content", None)
+                if piece:
+                    yield piece
+            u = getattr(ch, "usage", None)
+            if u is not None and usage_out is not None:
+                usage_out.update(input_tokens=getattr(u, "prompt_tokens", 0) or 0,
+                                 output_tokens=getattr(u, "completion_tokens", 0) or 0, model=model,
+                                 cached_tokens=getattr(getattr(u, "prompt_tokens_details", None), "cached_tokens", 0) or 0)
+        if usage_out is not None:
+            usage_out.setdefault("model", model)
+
     def complete(self, role, system, messages, meta=None):
-        model = self.models[role]
+        model = self.models.get(role) or self.models["agent"]
         r = self.client.chat.completions.create(
             model=model, temperature=0,
             max_tokens=MAX_TOKENS.get(role, 800) * self.token_multiplier,
@@ -198,3 +232,13 @@ class TrackedLLM:
         r = self.llm.complete(role, system, messages, meta)
         self.tracker.add(role, r)
         return r
+
+    def stream(self, role, system, messages, meta=None):
+        if not hasattr(self.llm, "stream"):  # providers without streaming: one chunk
+            r = self.complete(role, system, messages, meta)
+            yield r.text
+            return
+        usage: dict = {}
+        yield from self.llm.stream(role, system, messages, meta, usage_out=usage)
+        self.tracker.add(role, LLMResponse("", usage.get("input_tokens", 0), usage.get("output_tokens", 0),
+                                           usage.get("model", "unknown"), cached_tokens=usage.get("cached_tokens", 0)))

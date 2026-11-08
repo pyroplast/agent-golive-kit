@@ -1,0 +1,148 @@
+"""Live mode: what a real-time demo call needs on top of the demo agent.
+
+- The reply streams as JSON lines, one sentence per line with its own claims, and each sentence is checked by the
+  guard as soon as its line is complete. A passing sentence is "said" at once.
+- A sentence that fails stops the reply. If nothing was said yet, the slow path runs (the normal draft, guard,
+  retry and approved-answer fallback) behind a short filler line. If something was already said, it stays said and
+  the reply ends with a safe line that parks the rest; nothing is rewritten after the buyer has heard it.
+- Easy (low-risk) turns go to a smaller, faster model; medium and high risk stay on the big model.
+- If the first sentence takes longer than FILLER_AFTER_S, the filler line goes out first.
+
+In this text simulation "said" means: the time the sentence was ready, measured from the buyer's message.
+"""
+from __future__ import annotations
+
+import json
+import time
+
+from deploykit.agent import OUTPUT_SPEC, DemoAgent
+from deploykit.guard import approved_sources
+from deploykit.risk import max_tier
+
+LIVE_SPEC_MARK = "ONE LINE PER SENTENCE"
+LIVE_SPEC = f"""Reply as JSON LINES, {LIVE_SPEC_MARK}, so the prospect hears each sentence as soon as it is ready:
+{{"say": "<one sentence you say to the prospect>", "claims": [{{"text": "<the fact it states>", "source": "<chunk id>", "quote": "<exact words from that chunk>"}}]}}
+Every fact needs a claim on the SAME line as its sentence. A sentence with no facts (a question, a greeting, an offer
+to add the question to the list) has "claims": [].
+At HIGH risk, do not write facts yourself: send one line per approved sentence instead: {{"approved": "<approved sentence id>"}}
+Put the most useful sentence first and keep it short. Two to four sentences in total.
+Last line: {{"end": true, "kind": "<answer | clarify | refuse>", "handoff": <true|false>, "handoff_reason": <string or null>, "unknown": <true|false>, "park": <the question or null>, "qualification": {{}}}}
+No other text and no code fences. Each sentence is checked automatically before it is sent: one with a number,
+name or risky word that is not in its quote stops the reply."""
+
+FILLER = "Good question, let me check that properly."
+SAFE_TAIL = ("I'd rather not guess on the rest. Would you like me to add this question to the list to discuss "
+             "with a HiBob team member?")
+FILLER_AFTER_S = 1.5
+
+
+class LiveAgent(DemoAgent):
+    def __init__(self, *args, fast: bool = True, clock=time.perf_counter, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fast, self.clock = fast, clock
+
+    def _respond(self, history, lang, parked, floor=None, ledger=None):
+        t0 = self.clock()
+        sources = self.sources_for(history)
+        last_q = history[-1]["content"] if history and history[-1]["role"] == "user" else ""
+        user_text = " ".join(m["content"] for m in history if m["role"] == "user")
+        pre_tier = max_tier(floor or "low", self.policy.question_tier(last_q)) if self.policy else None
+        role = "agent_fast" if self.fast and pre_tier in (None, "low") else "agent"
+        system = self._system(sources, parked, pre_tier, last_q, ledger).replace(OUTPUT_SPEC, LIVE_SPEC)
+        replay = [{"role": m["role"], "content": json.dumps({"say": m["content"]}, ensure_ascii=False)}
+                  if m["role"] == "assistant" else m for m in history]
+
+        said, claims, approved_cites, end = [], [], [], {}
+        tier, first_at, problems, failed, cut = pre_tier, None, [], None, False
+        buf, stop = "", False
+
+        def handle(line):
+            nonlocal tier, first_at, problems, failed, cut, end
+            line = line.strip().strip("`")
+            if not line:
+                return False
+            try:
+                obj = json.loads(line)
+            except ValueError:
+                return False  # not a line of the format: skip it
+            if not isinstance(obj, dict):
+                return False
+            if obj.get("end"):
+                end = obj
+                return False
+            if obj.get("approved") and self.policy and obj["approved"] in self.policy.units:
+                u = self.policy.units[obj["approved"]]
+                said.append(u["text"])
+                approved_cites.extend(s for s in u["sources"] if s in self.ids)
+                tier = max_tier(tier or "low", "high")
+                first_at = first_at if first_at is not None else self.clock() - t0
+                return False
+            say = str(obj.get("say", "")).strip()
+            if not say:
+                return False
+            c = [x for x in obj.get("claims") or [] if isinstance(x, dict)]
+            mini = self._to_turn({"reply": say, "claims": c, "kind": "answer" if c else "clarify"}, False)
+            s_tier = (max_tier(pre_tier, self.policy.classify(last_q, mini["citations"], mini["claims"]))
+                      if self.policy else None)
+            found = self._check(mini, user_text, s_tier)
+            if found:
+                problems, failed = found, say
+                cut = bool(said)
+                return True
+            said.append(say)
+            claims.extend(c)
+            tier = max_tier(tier or "low", s_tier) if s_tier else tier
+            first_at = first_at if first_at is not None else self.clock() - t0
+            return False
+
+        for piece in self.llm.stream(role, system, replay, meta={"chunks": sources, "lang": lang}):
+            buf += piece
+            while "\n" in buf and not stop:
+                line, buf = buf.split("\n", 1)
+                stop = handle(line)
+            if stop:
+                break
+        if not stop and buf.strip():
+            stop = handle(buf)
+
+        if not said:  # the first sentence failed, or nothing usable came back: slow path behind a filler
+            filler_at = min(self.clock() - t0, FILLER_AFTER_S)
+            turn = DemoAgent._respond(self, history, lang, parked, floor, ledger)
+            turn["reply"] = f"{FILLER} {turn['reply']}"
+            turn["guard"] = {**turn.get("guard", {}), "streamed": True, "slow_path": True, "cut": False,
+                             "stream_problems": problems, "blocked_sentence": failed}
+            turn["model_role"] = "agent"
+            turn["timing"] = {"streamed": True, "filler": True, "first_words_s": round(filler_at, 3),
+                              "first_sentence_s": round(self.clock() - t0, 3), "total_s": round(self.clock() - t0, 3)}
+            return turn
+
+        reply = " ".join(said)
+        park = end.get("park")
+        if cut:
+            reply = f"{reply} {SAFE_TAIL}"
+            park = last_q or None
+        filler = first_at > FILLER_AFTER_S
+        if filler:
+            reply = f"{FILLER} {reply}"
+        kind = end.get("kind") or ("answer" if claims or approved_cites else "clarify")
+        turn = self._to_turn({"reply": reply, "claims": claims, "kind": kind, "park": park,
+                              "handoff": end.get("handoff", False), "handoff_reason": end.get("handoff_reason"),
+                              "unknown": end.get("unknown", False), "qualification": end.get("qualification") or {}},
+                             False)
+        for s in approved_cites + (approved_sources(reply, self.policy.approved) if self.policy else []):
+            if s in self.ids and s not in turn["citations"]:
+                turn["citations"].append(s)
+        turn["tier"] = tier
+        turn["own_tier"] = (self.policy.classify(last_q, turn["citations"], turn["claims"]) if self.policy else None)
+        if turn.get("unknown") and not turn.get("park") and not turn.get("handoff"):
+            turn["park"] = last_q or None
+            turn["reply"] = (turn["reply"].rstrip() + " " + self.config.get("park_offer", "")).strip()
+        total = self.clock() - t0
+        turn["guard"] = {"enabled": True, "streamed": True, "retried": False, "fell_back": False, "composed": False,
+                         "slow_path": False, "cut": cut, "first_problems": problems, "final_problems": [],
+                         "blocked_draft": failed}
+        turn["model_role"] = role
+        turn["timing"] = {"streamed": True, "filler": filler,
+                          "first_words_s": round(FILLER_AFTER_S if filler else first_at, 3),
+                          "first_sentence_s": round(first_at, 3), "total_s": round(total, 3)}
+        return turn

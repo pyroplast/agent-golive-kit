@@ -102,14 +102,17 @@ def cmd_calls(a):
     llm, prices = _llm(a)
     run_dir = run_calls(config, load_kb(a.kb), calls, llm, out_dir=a.out, name=a.name, prices=prices,
                         workers=a.workers, retrieval=a.retrieval, provider=a.provider,
-                        guard=not a.no_guard, approved=_approved(a))
+                        guard=not a.no_guard, approved=_approved(a), live=a.live, fast=not a.no_fast)
     report = build_report(run_dir)
     s = summarize_calls(load_call_rows(run_dir))
     stages = " · ".join(f"turns {k}: {v['rate']:.0%}" for k, v in s["by_stage"].items() if v["rate"] is not None)
     print(f"{run_dir.name}: {s['calls']} calls · {s['turns_passed']}/{s['turns']} turns passed · "
           f"{s['calls_passed']} clean calls · gate {'PASS' if s['gate']['passed'] else 'BLOCKED'} · "
           f"cost ${s['cost_usd']:.2f}")
-    print(f"  {stages} · reply time p50 {s['latency']['p50']}s, max {s['latency']['max']}s")
+    L = s["latency"]
+    print(f"  {stages} · reply time p50 {L['p50']}s, p90 {L['p90']}s, max {L['max']}s · first words p50 "
+          f"{L['first_words_p50']}s, p90 {L['first_words_p90']}s · filler {L['filler_turns']} · fast model "
+          f"{L['fast_model_turns']} turns")
     print(f"report: {report}")
     return 0
 
@@ -122,7 +125,10 @@ def _show_calls(a):
               f"{', '.join(v['reasons'])} · first failure turn {v.get('first_failure_turn')} · ended {r.get('ended')}")
         for t in r["turns"]:
             ag, j, tv = t["agent"], t["judge"], t["verdict"]
-            print(f"  T{t['n']} BUYER: {t['user']}  [tier {ag.get('tier')}, {t.get('latency_s', 0):.1f}s]")
+            tm = ag.get("timing") or {}
+            live_info = (f", first words {tm['first_words_s']:.1f}s{' +filler' if tm.get('filler') else ''}, "
+                         f"{ag.get('model_role')}" if tm else "")
+            print(f"  T{t['n']} BUYER: {t['user']}  [tier {ag.get('tier')}, {t.get('latency_s', 0):.1f}s{live_info}]")
             print(f"  T{t['n']} AGENT: {ag['reply'][:a.width]}")
             print(f"    {'ok' if tv['passed'] else 'FAIL ' + ','.join(tv['reasons'])} cites={ag['citations']} "
                   f"park={bool(ag.get('park'))} handoff={ag['handoff']} grounded={j.get('grounded')} "
@@ -256,6 +262,8 @@ def build_parser():
     c.add_argument("--models", default=str(ROOT / "config" / "models.json"))
     c.add_argument("--out", default=str(ROOT / "runs"))
     c.add_argument("--no-guard", action="store_true")
+    c.add_argument("--live", action="store_true", help="stream sentence by sentence, fast model, filler line")
+    c.add_argument("--no-fast", action="store_true", help="live mode without the fast model for easy turns")
     c.add_argument("--no-tiers", action="store_true")
     c.add_argument("--approved", default=str(ROOT / "config" / "approved_answers.json"))
     c.set_defaults(fn=cmd_calls)

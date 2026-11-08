@@ -12,7 +12,8 @@
   "nebius": {
     "agent": "Qwen/Qwen3-235B-A22B-Instruct-2507",
     "buyer": "Qwen/Qwen3-235B-A22B-Instruct-2507",
-    "judge": "deepseek-ai/DeepSeek-V4-Pro"
+    "judge": "deepseek-ai/DeepSeek-V4-Pro",
+    "agent_fast": "Qwen/Qwen3-30B-A3B-Instruct-2507"
   },
   "bedrock_region": "eu-west-1",
   "prices_usd_per_million_tokens": {
@@ -29,6 +30,10 @@
     "openai/gpt-oss-120b": {
       "input": 0.15,
       "output": 0.6
+    },
+    "Qwen/Qwen3-30B-A3B-Instruct-2507": {
+      "input": 0.1,
+      "output": 0.3
     }
   }
 }

@@ -33,6 +33,19 @@ What to do in this message: {intent}"""
 STAGES = (("1-5", 1, 5), ("6-10", 6, 10), ("11-15", 11, 15))
 _RECAP = re.compile(r"\b(list|follow[- ]?up|follow you up|open questions?|get back to you|team member)\b", re.I)
 UNSAFE_CALL_REASONS = {"contradiction", "call_judge_error"}
+_INTRO = re.compile(r"\b(?:I'm|I am|my name is|this is)\s+([A-Z][a-z]+)")
+_FROM = re.compile(r"\bfrom\s+([A-Z][\w&]*(?:\s+[A-Z][\w&]*)*)")
+
+
+def call_names(call: dict, history: list[dict]) -> set[str]:
+    """Who is on the call: the buyer's company (from the meeting invite, here the profile) and the names they gave."""
+    names = set(str(call.get("profile", {}).get("company", "")).split())
+    for m in history:
+        if m["role"] == "user":
+            names |= set(_INTRO.findall(m["content"]))
+            for grp in _FROM.findall(m["content"]):
+                names |= set(grp.split())
+    return {n for n in names if n}
 
 
 def load_calls(path) -> list[dict]:
@@ -115,6 +128,8 @@ def run_call(call: dict, agent, judge, buyer, llm, call_judge=None, cost=None) -
     ledger = []  # facts the agent gave in passed turns, so it can repeat itself without rewording
     for n, beat in enumerate(call["beats"], 1):
         history.append({"role": "user", "content": buyer.message(call, beat, history)})
+        if hasattr(agent, "context_names"):
+            agent.context_names = call_names(call, history)
         parked_before = list(parked)
         retrieved = [c.id for c in agent.sources_for(history)] if agent.index is not None else ["(full kb)"]
         start = time.perf_counter()
@@ -162,14 +177,18 @@ def _merge_costs(trackers: list[CostTracker]) -> dict:
 
 
 def run_calls(config, chunks, calls, llm, out_dir="runs", name=None, prices=None, workers=1,
-              retrieval="full", provider="mock", guard=True, approved=None) -> Path:
+              retrieval="full", provider="mock", guard=True, approved=None, live=False, fast=True) -> Path:
     trackers = []
 
     def one(call):
         tracker = CostTracker(prices)
         trackers.append(tracker)
         tracked = TrackedLLM(llm, tracker)
-        agent = DemoAgent(config, chunks, tracked, retrieval=retrieval, guard=guard, approved=approved)
+        if live:
+            from deploykit.live import LiveAgent
+            agent = LiveAgent(config, chunks, tracked, retrieval=retrieval, approved=approved, fast=fast)
+        else:
+            agent = DemoAgent(config, chunks, tracked, retrieval=retrieval, guard=guard, approved=approved)
         return run_call(call, agent, Judge(tracked, chunks), CallBuyer(tracked, config), tracked,
                         call_judge=CallJudge(tracked), cost=tracker)
 
@@ -185,7 +204,7 @@ def run_calls(config, chunks, calls, llm, out_dir="runs", name=None, prices=None
     fingerprint = hashlib.sha256(
         (json.dumps(config, sort_keys=True) + "".join(c.id + c.text for c in chunks)).encode()).hexdigest()[:12]
     meta = {"name": name, "suite": "calls", "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "provider": provider, "calls": len(rows), "turns": sum(len(r["turns"]) for r in rows),
+            "provider": provider, "live": live, "fast_model": live and fast, "calls": len(rows), "turns": sum(len(r["turns"]) for r in rows),
             "retrieval": retrieval, "guard": guard, "risk_tiers": approved is not None, "kb_chunks": len(chunks),
             "config_fingerprint": fingerprint, "cost": _merge_costs(trackers)}
     (run_dir / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
@@ -212,6 +231,7 @@ def summarize_calls(rows: list[dict]) -> dict:
         ok = sum(t["verdict"]["passed"] for t in ts)
         by_stage[label] = {"turns": len(ts), "passed": ok, "rate": round(ok / len(ts), 3) if ts else None}
     lat = [t.get("latency_s", 0.0) for _, t in turns]
+    first = [(t["agent"].get("timing") or {}).get("first_words_s", t.get("latency_s", 0.0)) for _, t in turns]
     unsafe_high = sum(1 for _, t in turns if not t["verdict"]["passed"]
                       and t["verdict"].get("failure_kind", "unsafe") == "unsafe" and t["agent"].get("tier") == "high")
     contradictions = sum(len((r.get("call_judge") or {}).get("contradictions", [])) for r in rows)
@@ -227,7 +247,12 @@ def summarize_calls(rows: list[dict]) -> dict:
         "by_stage": by_stage,
         "first_failure": {r["call_id"]: r["verdict"].get("first_failure_turn") for r in rows},
         "latency": {"p50": round(statistics.median(lat), 2) if lat else 0.0,
-                    "p95": round(_quantile(lat, 0.95), 2), "max": round(max(lat), 2) if lat else 0.0},
+                    "p90": round(_quantile(lat, 0.9), 2),
+                    "p95": round(_quantile(lat, 0.95), 2), "max": round(max(lat), 2) if lat else 0.0,
+                    "first_words_p50": round(statistics.median(first), 2) if first else 0.0,
+                    "first_words_p90": round(_quantile(first, 0.9), 2),
+                    "filler_turns": sum(bool((t["agent"].get("timing") or {}).get("filler")) for _, t in turns),
+                    "fast_model_turns": sum(t["agent"].get("model_role") == "agent_fast" for _, t in turns)},
         "gate": {"passed": unsafe_high == 0 and contradictions == 0, "unsafe_high": unsafe_high,
                  "contradictions": contradictions},
         "guard": {"blocked": sum(bool(g.get("retried") or g.get("fell_back")) for g in guarded),

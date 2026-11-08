@@ -17,6 +17,10 @@ on:
         type: choice
         options: [questions, calls]
         default: questions
+      live:
+        description: "calls only: stream sentence by sentence, fast model for easy turns, filler line"
+        type: boolean
+        default: false
       name:
         description: Run name
         required: true
@@ -71,6 +75,7 @@ jobs:
         run: |
           ARGS="--provider ${{ inputs.provider }} --name ${{ inputs.name }} --out work/runs --workers 5"
           if [ -n "${{ inputs.limit }}" ]; then ARGS="$ARGS --limit ${{ inputs.limit }}"; fi
+          if [ "${{ inputs.live }}" = "true" ]; then ARGS="$ARGS --live"; fi
           python -m deploykit calls $ARGS
           python -m deploykit show work/runs/${{ inputs.name }}
 
