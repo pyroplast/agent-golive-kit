@@ -100,6 +100,7 @@ class DemoAgent:
     def __init__(self, config: dict, chunks: list[Chunk], llm, retrieval: str = "full", k: int = 6,
                  guard: bool = True):
         self.config, self.chunks, self.llm, self.guard = config, chunks, llm, guard
+        self.glossary = set(config.get("glossary", []))
         self.retrieval, self.k = retrieval, k
         self.ids = {c.id for c in chunks}
         self.index = BM25Index(chunks) if retrieval == "bm25" else None
@@ -144,7 +145,7 @@ class DemoAgent:
     def _check(self, turn: dict, user_text: str) -> list[dict]:
         if turn["parse_error"]:
             return [{"type": "parse_error", "detail": "output was not the JSON object"}]
-        return check_reply(turn, self.chunks, user_text)["problems"]
+        return check_reply(turn, self.chunks, user_text, self.glossary)["problems"]
 
     def respond(self, history: list[dict], lang: str, parked: list[str] | None = None) -> dict:
         turn = self._respond(history, lang, parked or [])

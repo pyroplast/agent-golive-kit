@@ -95,5 +95,36 @@
     "The prospect demands a yes or no that the sources cannot support: do not answer yes or no; say what the sources do say and offer the list.",
     "The prospect asks for legal, tax or employment-law advice: say you can't advise on that, and offer to add any product question to the list."
   ],
-  "park_offer": "Would you like me to add this question to the list to discuss with a HiBob team member?"
+  "park_offer": "Would you like me to add this question to the list to discuss with a HiBob team member?",
+  "glossary": [
+    "Bob",
+    "HiBob",
+    "Core",
+    "Talent",
+    "Hiring",
+    "Learning",
+    "Planning",
+    "Compensation",
+    "Finance",
+    "Payroll",
+    "Payroll Hub",
+    "Payroll Connect",
+    "UK Payroll",
+    "US Payroll",
+    "Sandbox",
+    "Time Off",
+    "Time & Attendance",
+    "Analytics",
+    "Bob AI",
+    "Bob Companion",
+    "Bob Studio",
+    "InsightsIQ",
+    "Public HR API",
+    "HRIS",
+    "HCM",
+    "ATS",
+    "OKR",
+    "AI",
+    "Account Executive"
+  ]
 }

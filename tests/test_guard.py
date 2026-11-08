@@ -2,6 +2,8 @@
 
 Every case here comes from a real failure seen in the live runs.
 """
+import pytest
+
 from deploykit.guard import check_reply, extract_numbers
 
 
@@ -220,3 +222,44 @@ def test_names_from_the_cited_section_are_fine(chunks):
     d = draft("Hosted on AWS, primary region Ireland, backups in Germany.",
               [claim("Hosted on AWS with backups in Germany", "security#2", "Hosted on AWS")])
     assert check_reply(d, chunks, user_text="")["ok"]
+
+
+# --- precision fixes from reg-2 (guard blocked 25 of 66 replies) ----------------------
+
+from deploykit.kb import Chunk  # noqa: E402
+
+OKR = Chunk("perf#1", "perf", "Performance", "u", "Goals", "OKR support, AI-assisted goal drafts.")
+UK = Chunk("uk#1", "uk", "UK Payroll", "u", "Compliance", "HMRC-recognised payroll with automated tax code updates.")
+
+
+def test_plural_names_match_the_singular_in_the_source():
+    d = draft("Bob supports OKRs.", [claim("Bob supports OKRs", "perf#1", "OKR support")])
+    assert check_reply(d, [OKR], user_text="")["ok"]
+
+
+def test_british_and_american_spellings_match():
+    d = draft("UK payroll is HMRC-recognized.", [claim("UK payroll is HMRC-recognized", "uk#1", "HMRC-recognised payroll")])
+    assert check_reply(d, [UK], user_text="")["ok"]
+
+
+def test_client_glossary_terms_are_allowed_anywhere(chunks):
+    d = draft("The employee database is part of Core.",
+              [claim("The employee database is part of Core", "security#2", "Hosted on AWS")])
+    assert "unsupported_name" in problem_types(check_reply(d, chunks, user_text=""))
+    assert check_reply(d, chunks, user_text="", glossary={"Core"})["ok"]
+
+
+def test_glossary_does_not_let_other_names_through(chunks):
+    d = draft("Our Core integrates with Workday.", [claim("Our Core integrates with Workday", "security#2", "Hosted on AWS")])
+    r = check_reply(d, chunks, user_text="Workday?", glossary={"Core"})
+    assert any("Workday" in p["detail"] for p in r["problems"])
+
+
+@pytest.mark.parametrize("text", [
+    "Let me know if you have any questions about Bob's features.",
+    "For employment law matters, it's best to consult a qualified employment lawyer.",
+    "Would you like to know more about Bob's capabilities.",
+    "Feel free to ask anything else.",
+])
+def test_closers_and_redirects_need_no_claims(chunks, text):
+    assert check_reply(dict(draft(text), kind="refuse"), chunks, user_text="")["ok"]

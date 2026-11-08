@@ -30,6 +30,8 @@ _NON_FACT = [re.compile(p, re.I) for p in (
     r"\badd\w*\b.*\blist\b",
     r"\b(hand\w*|connect\w*|pass\w*)\b.*\b(team member|account executive|person|someone|team)\b",
     r"\bkeep going\b",
+    r"^(let me know|feel free|would you like|do you want|happy to|i'd be happy|i can help)\b",
+    r"\bconsult\b[^.]*\b(qualified|lawyer|attorney|advis|accountant|professional)",
 )]
 _PLEASANTRY = re.compile(r"^(hi|hello|hey|thanks|thank you|of course|sure|great|happy to help|got it|understood)\b", re.I)
 
@@ -97,12 +99,29 @@ def names(sentence: str) -> set[str]:
     return {n for n in _NAME.findall(rest) if n not in _NAME_IGNORE}
 
 
-def _missing_names(text: str, allowed: str) -> list[str]:
-    low = allowed.lower()
-    return sorted(n for n in names(text) if n.lower() not in low)
+def _canon(word: str) -> str:
+    """Comparable form of a name: lower case, no possessive or plural s, British/American -ise/-ize alike."""
+    w = word.lower().replace("’", "'")
+    w = re.sub(r"'s$", "", w)
+    w = w.replace("iz", "is").replace("yz", "ys")
+    if len(w) > 3 and w.endswith("s") and not w.endswith("ss"):
+        w = w[:-1]
+    return w
 
 
-def check_reply(draft: dict, chunks: list[Chunk], user_text: str = "") -> dict:
+def _missing_names(text: str, allowed: str, glossary: set[str] = frozenset()) -> list[str]:
+    allowed_canon = {_canon(w) for w in re.findall(r"[A-Za-z0-9'’]+", allowed)}
+    allowed_canon |= {_canon(w) for term in glossary for w in term.split()}
+    out = []
+    for n in names(text):
+        parts = [p for p in re.split(r"[-&+]", n) if p] or [n]
+        if not all(_canon(p) in allowed_canon for p in parts):
+            out.append(n)
+    return sorted(out)
+
+
+def check_reply(draft: dict, chunks: list[Chunk], user_text: str = "", glossary=frozenset()) -> dict:
+    """glossary: the client's own product and module names, allowed in any sentence (config: glossary)."""
     by_id = {c.id: c for c in chunks}
     problems: list[dict] = []
 
@@ -140,7 +159,7 @@ def check_reply(draft: dict, chunks: list[Chunk], user_text: str = "") -> dict:
         for w in sorted(_watch_words(text) - _watch_words(quote) - _watch_words(user_text)):
             add("watch_word", w)
         # Names must come from the cited section. The buyer naming a product does not make it a fact.
-        for n in _missing_names(text, section):
+        for n in _missing_names(text, section, glossary):
             add("unsupported_name", f"{n} (claim cites {src})")
 
     # Whole-reply pass: nothing in the reply may go beyond the cited material plus the buyer's words.
@@ -150,7 +169,7 @@ def check_reply(draft: dict, chunks: list[Chunk], user_text: str = "") -> dict:
     for w in sorted(_watch_words(reply) - _watch_words(" ".join(quotes) + " " + user_text)):
         add("watch_word", w)
     for sentence in factual_sentences(str(draft.get("reply", ""))):
-        for n in _missing_names(sentence, " ".join(sections)):
+        for n in _missing_names(sentence, " ".join(sections), glossary):
             add("unsupported_name", f"{n} (not in any cited section)")
 
     return {"ok": not problems, "problems": problems}
