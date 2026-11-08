@@ -40,6 +40,10 @@ Live runs on Nebius Token Factory: agent and buyer `Qwen/Qwen3-235B-A22B-Instruc
 | guard-1 | 24/30 (80%) | Pre-send guard added. Too strict: citation ids in prose and section-level numbers counted as violations; 10 safe fallbacks |
 | guard-2 | 27/30 (90%) | Guard false positives fixed. 3 of 47 drafts blocked, all real mis-citations; 2 sessions now fail the new uncited check |
 | park-1 | 27/30 (90%) | Open-question list instead of early handoffs; requests for a person always honoured. No dead ends; remaining failures: 2 uncited, 1 ungrounded |
+| uncited-1 | 27/30 (90%) | Answers must list quoted claims; 4 uncited answers blocked and fixed on retry. Loophole: a fact sent inside a reply labelled as a question |
+| reg-1 | 38/43 (88%) | +13 regression scenarios from live findings. All 30 originals pass. Caught a new invention ("integrates with Workday via Workato"); 3 failures were pattern false alarms, fixed |
+| reg-2 | 42/43 (98%) | Name check: names in factual sentences must come from the cited sources. Guard too noisy: blocked 25 of 66 replies (38%) |
+| reg-3 | 42/43 (98%) | Guard precision: name normalisation, client glossary. Blocks down to 15 of 66 (23%), mostly real mis-citations and uncited facts; 1 fallback |
 
 What the baseline caught before launch:
 
@@ -55,12 +59,17 @@ questions are passed on. The report lists the questions and counts human request
 
 How the guard works: the agent returns each fact with a verbatim quote from its source. Before a reply is sent,
 deterministic checks (no model tokens) verify that every quote exists in its cited section, every number is in a cited
-section or in the buyer's words, and risky words (certified, guaranteed, annual, SLA, free trial) appear in the quote that
-backs the claim. A failed draft gets one retry with the findings, then a safe handoff. Cost: one extra model call on 3 of
+section or in the buyer's words, risky words (certified, guaranteed, annual, SLA, free trial) appear in the quote that
+backs the claim, every factual sentence is backed by a quoted claim, and every name in a factual sentence comes from the
+cited sources (the buyer naming a product does not make it a fact; the client's own product names are in a glossary). A failed draft gets one retry with the findings, then a safe handoff. Cost: one extra model call on 3 of
 47 replies in guard-2; the run cost did not change ($0.52 → $0.53).
 
 Why guard-2 scores below fix-2: the stricter checks are working. fix-2 passed answers whose facts were uncited; those now
 fail (`uncited`) instead of being trusted. Fewer passes, more trustworthy passes.
+
+Regression suite: every bug found in a live run is a permanent scenario (`category: regression`, with `found_in`),
+and can forbid phrases. Each forbidden pattern is tested against the bad phrasing and against honest answers, including
+the exact honest replies that once raised false alarms.
 
 Open items:
 
