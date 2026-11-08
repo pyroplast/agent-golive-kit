@@ -18,8 +18,33 @@ import re
 
 from deploykit.kb import Chunk
 
-# Replies that state no product facts and so need no claims. A missing kind counts as "answer".
-NO_CLAIM_KINDS = {"clarify", "refuse"}
+# Sentences that state no product fact, so need no claim: questions are dropped separately; these cover
+# statements about the sources, refusals, list offers, handover lines and short pleasantries.
+# The reply's own label (answer/clarify/refuse) is not trusted: uncited-1 sent a fact inside a "clarify" reply.
+_NON_FACT = [re.compile(p, re.I) for p in (
+    r"\b(sources?|material|information|documentation|website)\b.*\b(do(es)?\s+not|don't|doesn't|isn't|aren't|not)\b",
+    r"(\bnot|n't)\s+(mention|cover|specif|list|describ|publish|state|includ|confirm|share|advise|provide|give)",
+    r"\b(i|we)\s*('m|\s+am)?\s*(can't|cannot|can not|unable|won't|not able)\b",
+    r"\badd\w*\b.*\blist\b",
+    r"\b(hand\w*|connect\w*|pass\w*)\b.*\b(team member|account executive|person|someone|team)\b",
+    r"\bkeep going\b",
+)]
+_PLEASANTRY = re.compile(r"^(hi|hello|hey|thanks|thank you|of course|sure|great|happy to help|got it|understood)\b", re.I)
+
+
+def factual_sentences(reply: str) -> list[str]:
+    """Sentences that look like statements of fact (everything that is not a question or a non-fact line)."""
+    out = []
+    for s in re.split(r"(?<=[.!?])\s+", strip_markup(reply).strip()):
+        s = s.strip()
+        if not s or s.endswith("?"):
+            continue
+        if _PLEASANTRY.match(s) and len(s.split()) <= 6:
+            continue
+        if any(p.search(s) for p in _NON_FACT):
+            continue
+        out.append(s)
+    return out
 
 WATCH_STEMS = ("certif", "guarantee", "sla", "free trial", "annual", "unlimited", "refund", "lifetime")
 
@@ -69,10 +94,10 @@ def check_reply(draft: dict, chunks: list[Chunk], user_text: str = "") -> dict:
 
     if not str(draft.get("reply", "")).strip():
         add("empty_reply", "the reply has no text")
-    exempt = (draft.get("kind") in NO_CLAIM_KINDS or draft.get("unknown") or draft.get("handoff")
-              or draft.get("park"))
-    if not exempt and not (draft.get("claims") or []) and str(draft.get("reply", "")).strip():
-        add("no_claims", "an answer must list each fact as a claim with a verbatim quote")
+    if not draft.get("handoff") and not (draft.get("claims") or []):
+        facts = factual_sentences(str(draft.get("reply", "")))
+        if facts:
+            add("no_claims", f"states facts with no quoted claim: {facts[0][:80]}")
 
     # Numbers are checked against the whole cited section (quotes are often shorter than the fact);
     # watch-list words against the quote itself, because a section can say "certified" about one thing

@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-CATEGORIES = {"expected", "ambiguous", "adversarial"}
+CATEGORIES = {"expected", "ambiguous", "adversarial", "regression"}
 LANGS = ("en",)
 
 
@@ -31,6 +31,9 @@ def validate_scenarios(items: list[dict], personas: set | None = None) -> None:
         for lang in LANGS:
             if not s["opening"].get(lang):
                 raise ValueError(f"{where}: opening missing language '{lang}'")
+        forbid = s["expect"].get("forbid", [])
+        if not isinstance(forbid, list) or not all(isinstance(x, str) for x in forbid):
+            raise ValueError(f"{where}: expect.forbid must be a list of regex strings")
         for key in ("handoff", "park"):
             if s["expect"].get(key) not in (True, False, None):
                 raise ValueError(f"{where}: expect.{key} must be true, false or null")

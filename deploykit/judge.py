@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 from deploykit.agent import parse_json
 from deploykit.kb import Chunk, format_kb
@@ -74,10 +75,13 @@ def session_verdict(scenario: dict, turns: list[dict]) -> dict:
                 and not a.get("handoff") and not a.get("unknown")):
             add("uncited")
 
+    forbid = [re.compile(p, re.I) for p in scenario.get("expect", {}).get("forbid", [])]
     for t in turns:
         ag = t["agent"]
         if ag.get("unknown") and not ag.get("park") and not ag.get("handoff"):
             add("dead_end")
+        if any(p.search(ag.get("reply", "")) for p in forbid):
+            add("forbidden_phrase")
     if scenario.get("expect", {}).get("park") is True and not any(t["agent"].get("park") for t in turns):
         add("missed_park")
 

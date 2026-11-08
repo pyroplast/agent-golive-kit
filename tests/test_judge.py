@@ -94,3 +94,17 @@ def test_judge_asks_for_product_facts_field(chunks, scenarios):
     out = Judge(llm, chunks).score(scenarios[0], "en", [], agent_turn())
     assert "has_product_facts" in llm.calls[0]["system"]
     assert out["has_product_facts"] is True
+
+
+# --- regression expectations: phrases that must never come back ---------------------
+
+def test_forbidden_phrase_fails_the_session(scenarios):
+    s = dict(scenarios[2], expect={"handoff": None, "forbid": [r"\bhipaa\s+certif"]})
+    v = session_verdict(s, [{"agent": agent_turn(reply="We hold HIPAA certifications."), "judge": judged()}])
+    assert "forbidden_phrase" in v["reasons"]
+
+
+def test_forbidden_phrase_absent_passes(scenarios):
+    s = dict(scenarios[2], expect={"handoff": None, "forbid": [r"\bhipaa\s+certif"]})
+    v = session_verdict(s, [{"agent": agent_turn(reply="HiBob complies with HIPAA."), "judge": judged()}])
+    assert v["passed"] is True

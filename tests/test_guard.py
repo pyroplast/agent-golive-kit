@@ -167,3 +167,28 @@ def test_refusal_needs_no_claims(chunks):
 def test_parked_reply_needs_no_claims(chunks):
     d = dict(draft("Shall I add that to the list for a HiBob team member?"), park="Is there a free trial?")
     assert check_reply(d, chunks, user_text="Is there a free trial?")["ok"]
+
+
+# --- labels are not trusted: the text decides (uncited-1) --------------------------
+
+def test_fact_inside_a_clarifying_reply_is_blocked(chunks):
+    """uncited-1: 'Mid-market organizations can go live in weeks' sent as a clarifying question."""
+    d = dict(draft("Mid-market organizations can go live in weeks. How many employees do you have?"), kind="clarify")
+    assert "no_claims" in problem_types(check_reply(d, chunks, user_text=""))
+
+
+def test_fact_inside_a_parked_reply_is_blocked(chunks):
+    d = dict(draft("Most teams go live in weeks. Shall I add this to the list for a HiBob team member?"),
+             park="Timeline for Core, Payroll Hub and Compensation?")
+    assert "no_claims" in problem_types(check_reply(d, chunks, user_text=""))
+
+
+def test_statements_about_the_sources_need_no_claims(chunks):
+    d = dict(draft("The sources do not list any customers in Spain. Would you like me to add this question "
+                   "to the list to discuss with a HiBob team member?"), unknown=True, park="Spanish customers?")
+    assert check_reply(d, chunks, user_text="")["ok"]
+
+
+def test_greeting_and_offer_need_no_claims(chunks):
+    d = dict(draft("Hi! Happy to help. I can add that to the list for a HiBob team member."), kind="clarify")
+    assert check_reply(d, chunks, user_text="")["ok"]
