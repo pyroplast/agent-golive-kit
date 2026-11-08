@@ -159,7 +159,7 @@ LABELS = {"hr_lead": "HR lead", "cfo": "CFO", "it_admin": "IT admin",
           "judge_error": "Judge output unreadable", "dead_end": "Said it didn't know and offered nothing",
           "missed_park": "Didn't offer to add the question to the list", "number_not_in_source": "Number not in a quoted source",
           "watch_word": "Risky wording not in a quote", "quote_not_found": "Quote not found in its source",
-          "unknown_source": "Cited a source that doesn't exist", "empty_reply": "Empty reply", "uncited": "Facts without a cited source", "bad_handoff": "Questionable handoff"}
+          "unknown_source": "Cited a source that doesn't exist", "empty_reply": "Empty reply", "no_claims": "Answer with no quoted claims", "uncited": "Facts without a cited source", "bad_handoff": "Questionable handoff"}
 
 
 def _label(k):

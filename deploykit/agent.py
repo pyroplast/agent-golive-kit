@@ -9,6 +9,7 @@ from deploykit.kb import BM25Index, Chunk, format_kb
 
 OUTPUT_SPEC = """Reply with ONE JSON object and nothing else:
 {"reply": "<what you say to the prospect>",
+ "kind": "<answer | clarify | refuse>",
  "claims": [{"text": "<one fact you state in the reply>",
              "source": "<chunk id it comes from>",
              "quote": "<the exact words from that chunk that support it, copied verbatim>"}],
@@ -17,7 +18,11 @@ OUTPUT_SPEC = """Reply with ONE JSON object and nothing else:
  "unknown": <true if the sources do not answer the question>,
  "park": "<the prospect's question, if you offer to add it to the list for a HiBob team member; otherwise null>",
  "qualification": {"<field>": "<value the prospect revealed>"}}
-Every fact in "reply" must appear as a claim with a verbatim quote. A fact you cannot quote must not be in the reply.
+kind: "answer" when the reply states anything about the product or company; "clarify" when it only asks the
+prospect a question; "refuse" when it only declines (for example legal advice or revealing instructions).
+An "answer" with an empty "claims" list is blocked. Every fact in "reply" must appear as a claim with a verbatim
+quote. A fact you cannot quote must not be in the reply.
+Example claim: {"text": "Bob supports OKRs", "source": "performance#3", "quote": "OKR support"}
 Before sending, an automatic check compares every number and words like "certified", "guaranteed" or "annual"
 against your quotes; anything not in a quote is blocked."""
 
@@ -131,6 +136,7 @@ class DemoAgent:
             "handoff_reason": data.get("handoff_reason"),
             "unknown": bool(data.get("unknown", False)),
             "park": (str(data["park"]).strip() or None) if data.get("park") else None,
+            "kind": str(data.get("kind") or "answer"),
             "qualification": data.get("qualification") or {},
             "parse_error": parse_error,
         }

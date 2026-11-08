@@ -42,6 +42,7 @@ def test_agent_prompt_contains_rules_sources_and_persona_free_history(config, ch
 
 def test_agent_filters_unknown_citations(config, chunks):
     llm = FixedLLM(json.dumps({"reply": "Ireland.", "citations": ["security#2", "made-up#9"],
+                                "claims": [{"text": "Ireland", "source": "security#2", "quote": "Ireland"}],
                                 "handoff": False, "handoff_reason": None, "unknown": False,
                                 "qualification": {}}))
     turn = DemoAgent(config, chunks, llm).respond([{"role": "user", "content": "region?"}], lang="en")

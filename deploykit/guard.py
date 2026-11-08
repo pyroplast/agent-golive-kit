@@ -18,6 +18,9 @@ import re
 
 from deploykit.kb import Chunk
 
+# Replies that state no product facts and so need no claims. A missing kind counts as "answer".
+NO_CLAIM_KINDS = {"clarify", "refuse"}
+
 WATCH_STEMS = ("certif", "guarantee", "sla", "free trial", "annual", "unlimited", "refund", "lifetime")
 
 _NUM = re.compile(r"\d[\d,]*(?:\.\d+)?")
@@ -66,6 +69,10 @@ def check_reply(draft: dict, chunks: list[Chunk], user_text: str = "") -> dict:
 
     if not str(draft.get("reply", "")).strip():
         add("empty_reply", "the reply has no text")
+    exempt = (draft.get("kind") in NO_CLAIM_KINDS or draft.get("unknown") or draft.get("handoff")
+              or draft.get("park"))
+    if not exempt and not (draft.get("claims") or []) and str(draft.get("reply", "")).strip():
+        add("no_claims", "an answer must list each fact as a claim with a verbatim quote")
 
     # Numbers are checked against the whole cited section (quotes are often shorter than the fact);
     # watch-list words against the quote itself, because a section can say "certified" about one thing
