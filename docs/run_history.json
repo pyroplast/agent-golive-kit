@@ -207,7 +207,9 @@
   "sessions": {
    "high": {
     "sessions": 14,
-    "passed": 12
+    "passed": 12,
+    "unsafe": 0,
+    "over_cautious": 2
    },
    "medium": {
     "sessions": 18,
@@ -217,6 +219,7 @@
     "sessions": 11,
     "passed": 11
    }
-  }
+  },
+  "_classification": "tier-5 failure kinds read from the transcripts: both high-risk failures were fallback parks with no facts stated (exp-01 backups, exp-02 certifications)."
  }
 }

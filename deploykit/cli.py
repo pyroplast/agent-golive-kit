@@ -100,7 +100,8 @@ def cmd_show(a):
     for r in load_rows(a.run):
         v = r["verdict"]
         print(f"\n== {r['scenario_id']} [{r['category']}/{r['persona']}] "
-              f"{'PASS' if v['passed'] else 'FAIL'} {', '.join(v['reasons'])}")
+              f"{'PASS' if v['passed'] else 'FAIL'} {', '.join(v['reasons'])}"
+              + (f" ({v.get('failure_kind', 'unsafe')})" if not v["passed"] else ""))
         for t in r["turns"]:
             ag, j = t["agent"], t["judge"]
             print(f"  BUYER: {t['user']}  [tier {t['agent'].get('tier')}]")

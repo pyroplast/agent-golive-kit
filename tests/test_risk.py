@@ -214,9 +214,9 @@ def test_summary_weights_failures_by_tier_and_gates_on_high():
                            "judge": {"grounded": passed}}]}
 
     s = summarize([row("a", "low", False), row("b", "medium", False), row("c", "high", True), row("d", "high", False)])
-    assert s["by_tier"]["high"] == {"sessions": 2, "passed": 1, "failed": 1}
+    assert s["by_tier"]["high"] == {"sessions": 2, "passed": 1, "failed": 1, "unsafe": 1, "over_cautious": 0}
     assert s["severity"] == 1 + 3 + 10
-    assert s["gate"] == {"passed": False, "high_tier_failures": 1}
+    assert s["gate"] == {"passed": False, "high_tier_failures": 1, "unsafe_high": 1, "over_cautious_high": 0}
     s2 = summarize([row("a", "low", False), row("c", "high", True)])
     assert s2["gate"]["passed"] is True
 

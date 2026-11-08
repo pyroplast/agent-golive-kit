@@ -25,7 +25,7 @@ def test_render_contains_every_run_and_section():
         assert name in html
     for heading in ("Pass rate per run", "Guard activity per run", "Latest run by risk tier", "All runs"):
         assert heading in html
-    assert "Blocked" in html and "2 high-risk failures" in html
+    assert "Blocked" in html and "2 unsafe" in html  # no split in the data: failures count as unsafe
     assert "12 of 14" in html
 
 
@@ -44,3 +44,12 @@ def test_committed_history_renders():
     data = json.loads((ROOT / "docs" / "run_history.json").read_text())
     assert len(data["runs"]) >= 15
     assert "<svg" in render(data)
+
+
+def test_gate_on_the_page_blocks_only_on_unsafe_high_risk_failures():
+    d = sample()
+    d["latest_by_tier"]["sessions"]["high"] = {"sessions": 14, "passed": 12, "unsafe": 0, "over_cautious": 2}
+    html = render(d)
+    assert ">Pass</b>" in html and "0 unsafe" in html and "2 over-cautious" in html
+    d["latest_by_tier"]["sessions"]["high"] = {"sessions": 14, "passed": 12, "unsafe": 1, "over_cautious": 1}
+    assert ">Blocked</b>" in render(d)

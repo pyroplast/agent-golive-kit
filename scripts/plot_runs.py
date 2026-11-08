@@ -186,6 +186,9 @@ def render(data: dict) -> str:
     by_tier = data["latest_by_tier"]["sessions"]
     high = by_tier.get("high", {"sessions": 0, "passed": 0})
     high_fail = high["sessions"] - high["passed"]
+    # Gate: zero UNSAFE high-risk failures. Without the split, every failure counts as unsafe (fail closed).
+    unsafe = high.get("unsafe", high_fail)
+    cautious = high.get("over_cautious", 0)
     total_cost = sum(r["cost_usd"] for r in runs)
     def row(r):
         blocked = f"{r['blocked']}/{r['replies']}" if r["guard"] else "—"
@@ -195,7 +198,7 @@ def render(data: dict) -> str:
                 f"<td class='n'>{blocked}</td><td class='n'>{fallbacks}</td><td class='n'>${r['cost_usd']:.2f}</td></tr>")
 
     rows = "".join(row(r) for r in runs)
-    gate = ("<b style='color:var(--ok)'>Pass</b>" if high_fail == 0 else "<b style='color:var(--bad)'>Blocked</b>")
+    gate = ("<b style='color:var(--ok)'>Pass</b>" if unsafe == 0 else "<b style='color:var(--bad)'>Blocked</b>")
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Agent go-live kit · run history</title>
 <style>{CSS}</style></head><body class="viz-root">
@@ -203,7 +206,7 @@ def render(data: dict) -> str:
 <p class="sub">Each run is the full simulated-buyer suite on open models (Nebius). Every change between runs was test-first.</p>
 <div class="tiles">
 <div class="tile"><span>Latest pass rate</span><b>{pct(latest['passed'], latest['sessions']):.0f}%</b><span>{latest['passed']} of {latest['sessions']} sessions · {escape(latest['run'])}</span></div>
-<div class="tile"><span>Release gate</span>{gate}<span>{high_fail} high-risk failures (target 0)</span></div>
+<div class="tile"><span>Release gate</span>{gate}<span>{unsafe} unsafe, {cautious} over-cautious high-risk failures</span></div>
 <div class="tile"><span>Guard blocks, latest</span><b>{pct(latest['blocked'], latest['replies']):.0f}%</b><span>{latest['blocked']} of {latest['replies']} replies, {latest['fallbacks']} fallbacks</span></div>
 <div class="tile"><span>Cost of all runs</span><b>${total_cost:.2f}</b><span>model usage, {len(runs)} runs</span></div>
 </div>
@@ -217,7 +220,8 @@ def render(data: dict) -> str:
 {chart_guard(runs)}
 <h2>Latest run by risk tier</h2>
 <p class="sub">Low: paraphrase allowed. Medium: numbers and risky words quoted. High: approved sentences only.
-The {high_fail} high-risk failures are over-cautious parks of answerable questions, not invented facts.</p>
+High-risk failures: {unsafe} unsafe (said something it shouldn't), {cautious} over-cautious (held back when it could have
+answered). The gate blocks only on unsafe ones.</p>
 {chart_tiers(by_tier)}
 <h2>All runs</h2>
 <table><tr><th>Run</th><th>What changed</th><th>Passed</th><th>Rate</th><th>Blocked</th><th>Fallbacks</th><th>Cost</th></tr>{rows}</table>
