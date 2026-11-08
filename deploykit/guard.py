@@ -33,7 +33,7 @@ _NON_FACT = [re.compile(p, re.I) for p in (
     r"^(let me know|feel free|would you like|do you want|happy to|i'd be happy|i can help)\b",
     r"\bconsult\b[^.]*\b(qualified|lawyer|attorney|advis|accountant|professional)",
 )]
-_PLEASANTRY = re.compile(r"^(hi|hello|hey|thanks|thank you|of course|sure|great|happy to help|got it|understood)\b", re.I)
+_PLEASANTRY = re.compile(r"^(hi|hello|hey|thanks|thank you|of course|sure|great|good question|happy to help|got it|understood)\b", re.I)
 
 
 def factual_sentences(reply: str) -> list[str]:
@@ -120,8 +120,37 @@ def _missing_names(text: str, allowed: str, glossary: set[str] = frozenset()) ->
     return sorted(out)
 
 
-def check_reply(draft: dict, chunks: list[Chunk], user_text: str = "", glossary=frozenset()) -> dict:
-    """glossary: the client's own product and module names, allowed in any sentence (config: glossary)."""
+def _check_high(draft: dict, approved: list[dict], add) -> None:
+    """High tier: facts may only come from a pre-approved answer, copied word for word."""
+    reply = str(draft.get("reply", ""))
+    by_id = {a["id"]: a for a in approved or []}
+    aid = draft.get("approved_answer")
+    if aid:
+        a = by_id.get(aid)
+        if a is None:
+            add("approved_answer_altered", f"unknown approved answer id {aid}")
+            return
+        if _norm(a["text"]) not in _norm(reply):
+            add("approved_answer_altered", f"{aid}: reply does not contain the approved text word for word")
+            return
+        rest = reply.replace(a["text"], " ")
+        extra = factual_sentences(rest)
+        if extra:
+            add("high_risk_unapproved", f"added to approved answer {aid}: {extra[0][:80]}")
+        return
+    facts = factual_sentences(reply)
+    if facts or (draft.get("claims") or []):
+        add("high_risk_unapproved", (facts[0] if facts else "claims without an approved answer")[:80])
+
+
+def check_reply(draft: dict, chunks: list[Chunk], user_text: str = "", glossary=frozenset(),
+                tier: str | None = None, approved: list[dict] | None = None) -> dict:
+    """glossary: the client's own product and module names, allowed in any sentence (config: glossary).
+
+    tier: None keeps the default rules (numbers and names against the cited section, risky words against the
+    quote). "low" relaxes risky words to the section; "medium" requires numbers, names and risky words inside
+    the quote; "high" allows only a pre-approved answer copied word for word (or a park, refusal or handoff).
+    """
     by_id = {c.id: c for c in chunks}
     problems: list[dict] = []
 
@@ -132,6 +161,11 @@ def check_reply(draft: dict, chunks: list[Chunk], user_text: str = "", glossary=
 
     if not str(draft.get("reply", "")).strip():
         add("empty_reply", "the reply has no text")
+    if tier == "high" and not draft.get("handoff"):
+        _check_high(draft, approved or [], add)
+        return {"ok": not problems, "problems": problems}
+
+    strict = tier in ("medium", "high")
     if not draft.get("handoff") and not (draft.get("claims") or []):
         facts = factual_sentences(str(draft.get("reply", "")))
         if facts:
@@ -154,22 +188,26 @@ def check_reply(draft: dict, chunks: list[Chunk], user_text: str = "", glossary=
             continue
         quotes.append(quote)
         sections.append(section)
-        for n in sorted(extract_numbers(text) - extract_numbers(section) - extract_numbers(user_text)):
+        num_scope = quote if strict else section
+        watch_scope = section if tier == "low" else quote
+        for n in sorted(extract_numbers(text) - extract_numbers(num_scope) - extract_numbers(user_text)):
             add("number_not_in_source", n)
-        for w in sorted(_watch_words(text) - _watch_words(quote) - _watch_words(user_text)):
+        for w in sorted(_watch_words(text) - _watch_words(watch_scope) - _watch_words(user_text)):
             add("watch_word", w)
         # Names must come from the cited section. The buyer naming a product does not make it a fact.
-        for n in _missing_names(text, section, glossary):
+        for n in _missing_names(text, num_scope, glossary):
             add("unsupported_name", f"{n} (claim cites {src})")
 
     # Whole-reply pass: nothing in the reply may go beyond the cited material plus the buyer's words.
     reply = strip_markup(str(draft.get("reply", "")))
-    for n in sorted(extract_numbers(reply) - extract_numbers(" ".join(sections) + " " + user_text)):
+    cited = " ".join(quotes if strict else sections)
+    for n in sorted(extract_numbers(reply) - extract_numbers(cited + " " + user_text)):
         add("number_not_in_source", n)
-    for w in sorted(_watch_words(reply) - _watch_words(" ".join(quotes) + " " + user_text)):
+    watch_cited = " ".join(sections if tier == "low" else quotes)
+    for w in sorted(_watch_words(reply) - _watch_words(watch_cited + " " + user_text)):
         add("watch_word", w)
     for sentence in factual_sentences(str(draft.get("reply", ""))):
-        for n in _missing_names(sentence, " ".join(sections), glossary):
+        for n in _missing_names(sentence, cited, glossary):
             add("unsupported_name", f"{n} (not in any cited section)")
 
     return {"ok": not problems, "problems": problems}

@@ -6,6 +6,7 @@ import re
 
 from deploykit.guard import check_reply
 from deploykit.kb import BM25Index, Chunk, format_kb
+from deploykit.risk import RiskPolicy, max_tier
 
 OUTPUT_SPEC = """Reply with ONE JSON object and nothing else:
 {"reply": "<what you say to the prospect>",
@@ -17,6 +18,7 @@ OUTPUT_SPEC = """Reply with ONE JSON object and nothing else:
  "handoff_reason": "<short reason or null>",
  "unknown": <true if the sources do not answer the question>,
  "park": "<the prospect's question, if you offer to add it to the list for a HiBob team member; otherwise null>",
+ "approved_answer": "<id of the approved answer you used, or null>",
  "qualification": {"<field>": "<value the prospect revealed>"}}
 kind: "answer" when the reply states anything about the product or company; "clarify" when it only asks the
 prospect a question; "refuse" when it only declines (for example legal advice or revealing instructions).
@@ -98,8 +100,10 @@ SOURCES (cite by the id in square brackets):
 
 class DemoAgent:
     def __init__(self, config: dict, chunks: list[Chunk], llm, retrieval: str = "full", k: int = 6,
-                 guard: bool = True):
+                 guard: bool = True, approved: list[dict] | None = None):
         self.config, self.chunks, self.llm, self.guard = config, chunks, llm, guard
+        # Risk tiers switch on when approved answers are supplied and the config has a risk section.
+        self.policy = RiskPolicy(config["risk"], approved) if approved is not None and "risk" in config else None
         self.glossary = set(config.get("glossary", []))
         self.retrieval, self.k = retrieval, k
         self.ids = {c.id for c in chunks}
@@ -138,17 +142,20 @@ class DemoAgent:
             "unknown": bool(data.get("unknown", False)),
             "park": (str(data["park"]).strip() or None) if data.get("park") else None,
             "kind": str(data.get("kind") or "answer"),
+            "approved_answer": data.get("approved_answer") or None,
             "qualification": data.get("qualification") or {},
             "parse_error": parse_error,
         }
 
-    def _check(self, turn: dict, user_text: str) -> list[dict]:
+    def _check(self, turn: dict, user_text: str, tier: str | None = None) -> list[dict]:
         if turn["parse_error"]:
             return [{"type": "parse_error", "detail": "output was not the JSON object"}]
-        return check_reply(turn, self.chunks, user_text, self.glossary)["problems"]
+        approved = self.policy.approved if self.policy else None
+        return check_reply(turn, self.chunks, user_text, self.glossary, tier=tier, approved=approved)["problems"]
 
-    def respond(self, history: list[dict], lang: str, parked: list[str] | None = None) -> dict:
-        turn = self._respond(history, lang, parked or [])
+    def respond(self, history: list[dict], lang: str, parked: list[str] | None = None,
+                floor: str | None = None) -> dict:
+        turn = self._respond(history, lang, parked or [], floor)
         last = history[-1]["content"] if history and history[-1]["role"] == "user" else ""
         if asks_for_human(last):
             # A person always gets a person, whatever the model said. Pass the open questions on.
@@ -158,9 +165,15 @@ class DemoAgent:
                         park=None)
         return turn
 
-    def _respond(self, history: list[dict], lang: str, parked: list[str]) -> dict:
-        sources = self.sources_for(history)
+    def _system(self, sources, parked, tier):
         system = build_system_prompt(self.config, sources, parked)
+        return system + ("\n\n" + self.policy.prompt_block(tier) if self.policy and tier else "")
+
+    def _respond(self, history: list[dict], lang: str, parked: list[str], floor: str | None = None) -> dict:
+        sources = self.sources_for(history)
+        last_q = history[-1]["content"] if history and history[-1]["role"] == "user" else ""
+        pre_tier = max_tier(floor or "low", self.policy.question_tier(last_q)) if self.policy else None
+        system = self._system(sources, parked, pre_tier)
         # Replay the agent's own earlier turns in the JSON shape it must keep producing.
         # With plain-text history the model drifted out of the format on follow-up turns.
         replay = [{"role": m["role"], "content": json.dumps({"reply": m["content"]}, ensure_ascii=False)}
@@ -168,26 +181,35 @@ class DemoAgent:
         meta = {"chunks": sources, "lang": lang}
         r = self.llm.complete("agent", system, replay, meta=meta)
         turn = self._to_turn(*self._parse(r.text))
+        tier = (max_tier(pre_tier, self.policy.classify(last_q, turn["citations"], turn["claims"]))
+                if self.policy else None)
+        turn["tier"] = tier
         if not self.guard:
             turn["guard"] = {"enabled": False}
             return turn
 
         user_text = " ".join(m["content"] for m in history if m["role"] == "user")
-        first = self._check(turn, user_text)
+        first = self._check(turn, user_text, tier)
         final, retried, fell_back, blocked_draft = first, False, False, None
-        if first:
+        if first and tier == "high" and pre_tier == "high":
+            # High risk, and the prompt already carried the approved answers: no second attempt, park now.
+            blocked_draft, fell_back = turn["reply"], True
+            turn = {**self._to_turn({}, False), "reply": FALLBACK_REPLY, "park": last_q or None, "tier": tier}
+        elif first:
             retried = True
             blocked_draft = turn["reply"]
+            if tier != pre_tier:
+                system = self._system(sources, parked, tier)
             feedback = "; ".join(f"{p['type']}: {p['detail']}" for p in first)
             retry_msgs = replay + [{"role": "assistant", "content": r.text},
                                    {"role": "user", "content": GUARD_RETRY.format(problems=feedback)}]
             r2 = self.llm.complete("agent", system, retry_msgs, meta=meta)
             turn = self._to_turn(*self._parse(r2.text))
-            final = self._check(turn, user_text)
+            turn["tier"] = tier
+            final = self._check(turn, user_text, tier)
             if final:
                 fell_back = True
-                last = history[-1]["content"] if history and history[-1]["role"] == "user" else None
-                turn = {**self._to_turn({}, False), "reply": FALLBACK_REPLY, "park": last}
+                turn = {**self._to_turn({}, False), "reply": FALLBACK_REPLY, "park": last_q or None, "tier": tier}
         turn["guard"] = {"enabled": True, "retried": retried, "fell_back": fell_back,
                          "first_problems": first, "final_problems": final,
                          "blocked_draft": blocked_draft}

@@ -32,6 +32,13 @@ def _models(path, provider):
     return models, prices, data.get("bedrock_region", "eu-west-1")
 
 
+def _approved(a):
+    if a.no_tiers:
+        return None
+    path = Path(a.approved)
+    return json.loads(path.read_text()) if path.exists() else None
+
+
 def cmd_run(a):
     config = json.loads(Path(a.config).read_text())
     chunks = load_kb(a.kb)
@@ -55,7 +62,7 @@ def cmd_run(a):
     run_dir = run_suite(config, chunks, scenarios, llm, langs=a.langs.split(","),
                         max_turns=a.max_turns, out_dir=a.out, name=a.name, prices=prices,
                         workers=a.workers, retrieval=a.retrieval, provider=a.provider,
-                        guard=not a.no_guard)
+                        guard=not a.no_guard, approved=_approved(a))
     report = build_report(run_dir)
     meta = json.loads((run_dir / "meta.json").read_text())
     rows = load_rows(run_dir)
@@ -96,7 +103,7 @@ def cmd_show(a):
               f"{'PASS' if v['passed'] else 'FAIL'} {', '.join(v['reasons'])}")
         for t in r["turns"]:
             ag, j = t["agent"], t["judge"]
-            print(f"  BUYER: {t['user']}")
+            print(f"  BUYER: {t['user']}  [tier {t['agent'].get('tier')}]")
             print(f"  AGENT: {ag['reply'][:a.width]}")
             print(f"    cites={ag['citations']} handoff={ag['handoff']} unknown={ag['unknown']} "
                   f"parse_error={ag['parse_error']} invalid={ag['invalid_citations']}")
@@ -172,6 +179,8 @@ def build_parser():
     r.add_argument("--out", default=str(ROOT / "runs"))
     r.add_argument("--compare-to", help="earlier run dir to diff against")
     r.add_argument("--no-guard", action="store_true", help="send drafts without the pre-send guard")
+    r.add_argument("--no-tiers", action="store_true", help="one strictness for every reply (no risk tiers)")
+    r.add_argument("--approved", default=str(ROOT / "config" / "approved_answers.json"))
     r.add_argument("--publish-bucket", help="S3 bucket to upload the run to")
     r.set_defaults(fn=cmd_run)
 

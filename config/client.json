@@ -126,5 +126,71 @@
     "OKR",
     "AI",
     "Account Executive"
-  ]
+  ],
+  "risk": {
+    "default": "low",
+    "keywords": {
+      "high": [
+        "gdpr",
+        "hipaa",
+        "certif",
+        "soc 2",
+        "soc2",
+        "iso 27",
+        "legal",
+        "lawyer",
+        "tribunal",
+        "lawsuit",
+        "tax",
+        "residency",
+        "hosted",
+        "hosting",
+        "encrypt",
+        "security",
+        "breach",
+        "train on",
+        "retention",
+        "fire ",
+        "firing",
+        "dismiss",
+        "terminate",
+        "hmrc",
+        "compliance",
+        "compliant"
+      ],
+      "medium": [
+        "price",
+        "pricing",
+        "cost",
+        "discount",
+        "contract",
+        "sla",
+        "uptime",
+        "integrat",
+        "timeline",
+        "go live",
+        "be live",
+        "implementation",
+        "trial",
+        "payroll",
+        "compensation",
+        "budget",
+        "quote",
+        "salar"
+      ]
+    },
+    "section_tiers": {
+      "security": "high",
+      "ai": "high",
+      "payroll-uk": "high",
+      "faq#6": "high",
+      "core#7": "high",
+      "pricing": "medium",
+      "payroll-hub": "medium",
+      "compensation": "medium",
+      "integrations": "medium",
+      "faq": "medium",
+      "time": "medium"
+    }
+  }
 }

@@ -76,3 +76,25 @@ def test_forbidden_patterns_catch_bad_and_spare_honest_answers():
             assert any(p.search(text) for p in pats), f"{sid} misses: {text}"
         for text in honest:
             assert not any(p.search(text) for p in pats), f"{sid} false alarm: {text}"
+
+
+def test_approved_answers_are_backed_by_their_sources():
+    """High-tier answers are sent word for word, so each must be traceable to the knowledge base."""
+    import json
+    from deploykit.guard import extract_numbers
+    chunks = {c.id: c for c in load_kb(ROOT / "kb")}
+    answers = json.loads((ROOT / "config" / "approved_answers.json").read_text())
+    assert len({a["id"] for a in answers}) == len(answers)
+    for a in answers:
+        assert "pending client approval" in a["status"]
+        assert all(s in chunks for s in a["sources"]), a["id"]
+        text = " ".join(chunks[s].text for s in a["sources"])
+        missing = extract_numbers(a["text"]) - extract_numbers(text)
+        assert not missing, f"{a['id']}: numbers {missing} not in its sources"
+
+
+def test_payroll_answer_cites_the_payroll_section():
+    import json
+    chunks = {c.id: c for c in load_kb(ROOT / "kb")}
+    a = {x["id"]: x for x in json.loads((ROOT / "config" / "approved_answers.json").read_text())}
+    assert any(chunks[s].heading.lower().startswith(("payroll", "native")) for s in a["payroll-coverage"]["sources"])

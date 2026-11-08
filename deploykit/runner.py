@@ -10,14 +10,17 @@ from pathlib import Path
 from deploykit.agent import DemoAgent
 from deploykit.judge import Judge, session_verdict
 from deploykit.llm import CostTracker, TrackedLLM
+from deploykit.risk import max_tier
 from deploykit.simulator import Buyer
 
 
 def run_session(scenario, lang, agent, judge, buyer, max_turns):
     history = [{"role": "user", "content": scenario["opening"][lang]}]
-    turns, parked = [], []
+    turns, parked, tier = [], [], None
     for i in range(max_turns):
-        a = agent.respond(history, lang, parked=list(parked))
+        a = agent.respond(history, lang, parked=list(parked), floor=tier)
+        if a.get("tier"):
+            tier = max_tier(tier or "low", a["tier"])
         if a.get("park") and a["park"] not in parked:
             parked.append(a["park"])
         j = judge.score(scenario, lang, history, a)
@@ -30,16 +33,16 @@ def run_session(scenario, lang, agent, judge, buyer, max_turns):
             break
         history.append({"role": "user", "content": nxt})
     return {"scenario_id": scenario["id"], "category": scenario["category"],
-            "persona": scenario["persona"], "lang": lang, "turns": turns, "parked": parked,
+            "persona": scenario["persona"], "lang": lang, "turns": turns, "parked": parked, "tier": tier,
             "verdict": session_verdict(scenario, turns)}
 
 
 def run_suite(config, chunks, scenarios, llm, langs=("en",), max_turns=3,
               out_dir="runs", name=None, prices=None, workers=1, retrieval="full",
-              provider="mock", guard=True) -> Path:
+              provider="mock", guard=True, approved=None) -> Path:
     tracker = CostTracker(prices)
     tracked = TrackedLLM(llm, tracker)
-    agent = DemoAgent(config, chunks, tracked, retrieval=retrieval, guard=guard)
+    agent = DemoAgent(config, chunks, tracked, retrieval=retrieval, guard=guard, approved=approved)
     judge = Judge(tracked, chunks)
     buyer = Buyer(tracked, config)
 
@@ -59,7 +62,7 @@ def run_suite(config, chunks, scenarios, llm, langs=("en",), max_turns=3,
     ).hexdigest()[:12]
     meta = {"name": name, "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "provider": provider, "sessions": len(rows), "langs": list(langs),
-            "max_turns": max_turns, "retrieval": retrieval, "guard": guard, "kb_chunks": len(chunks),
+            "max_turns": max_turns, "retrieval": retrieval, "guard": guard, "risk_tiers": approved is not None, "kb_chunks": len(chunks),
             "config_fingerprint": fingerprint, "cost": tracker.summary()}
     (run_dir / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     return run_dir

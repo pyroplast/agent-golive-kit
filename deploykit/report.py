@@ -41,7 +41,20 @@ def summarize(rows: list[dict]) -> dict:
              "fallbacks": sum(bool(g.get("fell_back")) for g in guarded), "caught": dict(caught)}
     parked = [{"scenario": r["scenario_id"], "question": q} for r in rows for q in r.get("parked", [])]
     human = sum(any(t["agent"].get("handoff_reason") == "buyer asked for a person" for t in r["turns"]) for r in rows)
+    from deploykit.risk import WEIGHTS, TIERS
+    by_tier = {}
+    for r in rows:
+        t = r.get("tier")
+        if t in TIERS:
+            b = by_tier.setdefault(t, {"sessions": 0, "passed": 0, "failed": 0})
+            b["sessions"] += 1
+            b["passed" if r["verdict"]["passed"] else "failed"] += 1
+    severity = sum(WEIGHTS.get(r.get("tier") or "low", 1) for r in rows if not r["verdict"]["passed"])
+    high_fail = by_tier.get("high", {}).get("failed", 0)
     return {
+        "by_tier": {t: by_tier[t] for t in TIERS if t in by_tier},
+        "severity": severity,
+        "gate": {"passed": high_fail == 0, "high_tier_failures": high_fail},
         "parked": parked,
         "parked_total": len(parked),
         "human_requests": human,
@@ -101,7 +114,7 @@ header{background:var(--ink);color:#fff;padding:56px 0 48px}
 header h1{font-size:56px;line-height:1.02;margin:0 0 14px}
 header .sub{color:rgba(255,255,255,.72);font-size:17px;margin:0 0 26px;max-width:640px}
 header .meta{color:rgba(255,255,255,.5);display:flex;flex-wrap:wrap;gap:6px 22px}
-.kpis{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);border-top:0;margin-bottom:64px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));border:1px solid var(--line);border-top:0;margin-bottom:64px}
 .kpi{padding:26px 24px 22px;border-right:1px solid var(--line)}.kpi:last-child{border-right:0}
 .kpi .label{font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--grey)}
 .kpi .value{font-size:52px;line-height:1.05;margin:10px 0 4px}
@@ -241,9 +254,18 @@ def build_report(run_dir) -> Path:
         f"<div class='note'>across {s['turns']} turns</div></div>",
         f"<div class='kpi'><div class='label'>Handoffs</div><div class='value serif'>{s['handoff_sessions']}</div>"
         f"<div class='note'>sessions passed to a human</div></div>",
+        (f"<div class='kpi'><div class='label'>Release gate</div><div class='value serif'>"
+         f"{'Pass' if s['gate']['passed'] else 'Blocked'}</div><div class='note'>{s['gate']['high_tier_failures']} high-risk "
+         f"failures · severity {s['severity']}</div></div>" if s["by_tier"] else ""),
         f"<div class='kpi'><div class='label'>Run cost</div><div class='value serif'>{cost_value}</div>"
         f"<div class='note'>{escape(cost_note)}</div></div></div>",
         _section("01", "Results by group", "Where the agent is ready and where it isn't.", groups),
+        _section("01a", "Results by risk tier", "Low: paraphrase allowed. Medium: numbers and names must be quoted. "
+                 "High: approved answers only. Failures are weighted 1, 3 and 10; the release gate requires zero high-risk failures.",
+                 _table(["Tier", "Sessions", "Passed", "Failed", "Pass rate"],
+                        [[escape(t), v["sessions"], v["passed"], v["failed"], _bar(v["passed"] / v["sessions"])]
+                         for t, v in s["by_tier"].items()], numeric=(1, 2, 3))
+                 if s["by_tier"] else "<p class='empty'>Risk tiers were off for this run.</p>"),
         _section("01b", "Pre-send guard", "Drafts blocked before the buyer saw them, by deterministic checks (no model tokens).",
                  (f"<p>{s['guard']['turns_checked']} replies checked · {s['guard']['retries']} blocked and retried · "
                   f"{s['guard']['fallbacks']} replaced by a safe handoff.</p>"
