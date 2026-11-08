@@ -1,189 +1,158 @@
-# HiBob mock deployment: pre-launch simulation kit
+# Agent Go-Live Kit
 
-A mock forward-deployed engagement: a sales demo agent for HiBob's product Bob, tested before go-live
-with simulated buyers, a judge model, a go-live report and nightly regression runs on AWS.
+**A mock forward-deployed engagement: taking a sales agent for HiBob from "demo works" to "safe to put in front of buyers".**
 
-Built from HiBob's public website only. The knowledge base (`kb/`) holds short factual notes
-summarised from public hibob.com pages, each with its source link. No HiBob internal data is used.
-This project is not affiliated with HiBob or Supersonik.
+I built a website sales agent for HiBob (HR software). Then I built what an FDE needs around it before go-live:
 
-## What it does
+- a simulated-buyer test suite;
+- an independent judge;
+- a guard that checks each reply before it is sent;
+- risk-tiered guardrails;
+- a release gate;
+- an AWS stack that runs the suite every night.
 
-1. **Agent** (`deploykit/agent.py`): answers prospects only from `kb/`, cites chunk ids, follows the
-   qualification and handoff rules in `config/client.json`, replies in English.
-2. **Simulation suite** (`suite/scenarios.json`): 30 scenarios (10 expected, 10 ambiguous,
-   10 adversarial) for three buyer personas, in English = 30 sessions.
-   Follow-ups are scripted so runs are comparable; a scenario can set `"simulate": true` to let a
-   model play the buyer.
-3. **Judge** (`deploykit/judge.py`): a stronger model checks every reply against the sources
-   (grounded, completeness, handoff, language, knowledge gap). Rule checks add missed or unnecessary
-   handoffs, invalid citations and parse errors.
-4. **Report** (`report.html` per run): pass rate by scenario type, persona and language, failure
-   reasons, knowledge gaps, risky answers, every transcript, and run cost.
-5. **Regression**: `diff` lists sessions that were fixed or broke between two runs.
-6. **Judge check**: `sample` picks turns for you to label by hand, `agreement` scores the judge
-   against you.
-7. **AWS** (`infra/`): private S3 bucket + CloudFront for reports, a Fargate task on a nightly
-   schedule that runs the suite on Amazon Bedrock, diffs against the last run and publishes.
+Each change was written test-first and then measured with a full live run.
 
-## Results so far
+> Built only from public hibob.com pages, summarised into `kb/`. This project is not affiliated with HiBob.
+> The approved answers in `config/approved_answers.json` are drafts waiting for the client's approval.
 
-Live runs on Nebius Token Factory: agent and buyer `Qwen/Qwen3-235B-A22B-Instruct-2507`, judge
-`deepseek-ai/DeepSeek-V4-Pro` (a different model family, so the agent is not graded by its own kind).
-30 scenarios per run, about $0.55 per run.
+![Run history: pass rate from 47% to 98% across 16 live runs](docs/run_history.png)
 
-| Run | Passed | What changed |
-| --- | --- | --- |
-| baseline | 14/30 (47%) | — |
-| fix-1 | 25/30 (83%) | Replay the agent's own turns as JSON; accept bracketed citation ids; no prices or estimates; no claims about competitors; separate Core from add-ons |
-| fix-2 | 29/30 (97%) | Never turn "not mentioned" into "not supported"; no claims past the sources; hand off on buying-critical gaps |
-| guard-1 | 24/30 (80%) | Pre-send guard added. Too strict: citation ids in prose and section-level numbers counted as violations; 10 safe fallbacks |
-| guard-2 | 27/30 (90%) | Guard false positives fixed. 3 of 47 drafts blocked, all real mis-citations; 2 sessions now fail the new uncited check |
-| park-1 | 27/30 (90%) | Open-question list instead of early handoffs; requests for a person always honoured. No dead ends; remaining failures: 2 uncited, 1 ungrounded |
-| uncited-1 | 27/30 (90%) | Answers must list quoted claims; 4 uncited answers blocked and fixed on retry. Loophole: a fact sent inside a reply labelled as a question |
-| reg-1 | 38/43 (88%) | +13 regression scenarios from live findings. All 30 originals pass. Caught a new invention ("integrates with Workday via Workato"); 3 failures were pattern false alarms, fixed |
-| reg-2 | 42/43 (98%) | Name check: names in factual sentences must come from the cited sources. Guard too noisy: blocked 25 of 66 replies (38%) |
-| reg-3 | 42/43 (98%) | Guard precision: name normalisation, client glossary. Blocks down to 15 of 66 (23%), mostly real mis-citations and uncited facts; 1 fallback |
-| tier-1 | 38/43 (88%) | Risk tiers (low / medium / high). High tier too coarse: whole-answer approval parked answerable questions |
-| tier-2 | 37/43 (86%) | Approval per sentence. The model still paraphrased approved text; 11 fallbacks |
-| tier-3 | 39/43 (91%) | Select, don't write: the model picks approved sentence ids, code assembles the exact text. 6 fallbacks |
-| tier-4 | 39/43 (91%) | Medium-tier names checked against the section. Found two bugs combining approved text with tiers |
-| tier-5 | 41/43 (95%) | Approved sentences pass at every tier. Release gate blocked: 2 high-risk failures, both over-cautious parks |
-| gate-1 | 42/43 (98%) | Gate blocks only on unsafe high-risk failures. 0 unsafe; the one failure is an over-cautious park. Gate passes |
+| | |
+|---|---|
+| Pass rate | **47% → 98%** (42 of 43 simulated sessions) |
+| Release gate | **Pass**: 0 unsafe high-risk failures |
+| Judge vs human labels | 14 of 15 agree (93%) |
+| Cost of all 16 live runs | **$10.75** on open-weight models (Nebius) |
+| Tests | 178, all offline (fake model, fake AWS) |
 
-Charts of every run: [`docs/run_history.html`](docs/run_history.html), generated by `python scripts/plot_runs.py`
-from [`docs/run_history.json`](docs/run_history.json).
+## What the suite caught
 
-What the baseline caught before launch:
+These are real failures from the live runs. Each one became a fix and a permanent regression scenario.
 
-- **Invented pricing.** Asked for a ballpark, the agent said "$8–12 per employee per month". HiBob publishes no prices.
-- **Format drift.** On follow-up turns the agent dropped the required output format (16 of 30 sessions).
-- **A false "no" to procurement.** It said US-only hosting is "not supported" when the sources are silent, and did not hand off.
-- **Claims past the sources** about a competitor, country localization, a Workday integration, and "GDPR certification".
+- **Invented prices.** The agent quoted "$8–12 per employee per month". HiBob publishes no prices.
+- **False "not supported".** The agent said features weren't available when the docs say they are. That loses deals quietly.
+- **Invented integrations.** The agent named a Workday connector that isn't in the docs.
+- **Inflated compliance.** The agent claimed "HIPAA certifications" and "SOC 2 Type II audits conducted annually". The source only says HIPAA *compliance* and routine audits. This is a legal risk in a security review.
+- **Early handoff.** Every hard question went to "talk to sales", which loses the conversation.
 
-Risk tiers: each reply's tier is the highest of the question's keywords, the cited sections' tags and its claims, and
-a conversation's tier only goes up. Low allows paraphrase of cited sections; medium requires numbers and risky words
-inside the quote; high allows only approved sentences (`config/approved_answers.json`, drafts pending client approval),
-picked by id and assembled by code so they cannot be reworded. Every failed session is classed as unsafe (the agent said something it shouldn't: an unsupported fact, a
-forbidden phrase, an uncited fact, an ignored request for a person) or over-cautious (it held back: a dead end, a
-missed list offer, a safe fallback on an answerable question). Unknown cases count as unsafe. Unsafe failures are
-weighted 1, 3 and 10 by tier, over-cautious ones count 1, and the release gate requires zero unsafe high-risk failures.
+## How it works
 
-Conversation policy: when the agent can't answer or can't back an answer with a quote (prices, NDA documents, gaps,
-blocked drafts), it offers to add the question to a list for a HiBob team member and the call continues. An explicit
-request for a person is always honoured at once, with a code backstop that ignores HR vocabulary; the collected
-questions are passed on. The report lists the questions and counts human requests.
+```mermaid
+flowchart LR
+    Q[Buyer message] --> R[Risk classifier<br/>low / medium / high]
+    R --> A[Agent<br/>Qwen3-235B]
+    A --> G{Pre-send guard<br/>deterministic, 0 tokens}
+    G -- pass --> S[Send]
+    G -- fail --> A2[One retry<br/>with findings]
+    A2 --> G2{Guard}
+    G2 -- pass --> S
+    G2 -- fail --> P[Safe reply:<br/>park the question]
+    Q -. asks for a person .-> H[Hand over]
+    S --> J[Offline judge<br/>DeepSeek, different family]
+    J --> RP[Report + release gate]
+```
 
-How the guard works: the agent returns each fact with a verbatim quote from its source. Before a reply is sent,
-deterministic checks (no model tokens) verify that every quote exists in its cited section, every number is in a cited
-section or in the buyer's words, risky words (certified, guaranteed, annual, SLA, free trial) appear in the quote that
-backs the claim, every factual sentence is backed by a quoted claim, and every name in a factual sentence comes from the
-cited sources (the buyer naming a product does not make it a fact; the client's own product names are in a glossary). A failed draft gets one retry with the findings, then a safe handoff. Cost: one extra model call on 3 of
-47 replies in guard-2; the run cost did not change ($0.52 → $0.53).
+**1. Answers are quoted claims, not free text.** The agent returns JSON: a reply plus the claims it makes, and each claim carries the chunk id and a verbatim quote. Grounding is then mechanical: does the quote exist, and does it contain the numbers and key words of the claim?
 
-Why guard-2 scores below fix-2: the stricter checks are working. fix-2 passed answers whose facts were uncited; those now
-fail (`uncited`) instead of being trusted. Fewer passes, more trustworthy passes.
+**2. A guard runs before anything is sent.** It is plain Python and costs no tokens. It checks:
 
-Regression suite: every bug found in a live run is a permanent scenario (`category: regression`, with `found_in`),
-and can forbid phrases. Each forbidden pattern is tested against the bad phrasing and against honest answers, including
-the exact honest replies that once raised false alarms.
+- numbers;
+- watch-words such as "certified", "unlimited" or "guaranteed";
+- verbatim quotes;
+- factual sentences with no claim behind them;
+- product names that aren't in the docs (normalised, plus a client glossary);
+- empty replies and leaked citation markup.
 
-Open items:
+If a draft fails, the agent gets one retry with the findings. If the retry also fails, a safe reply parks the question. The guard is a filter and the judge is an auditor: the guard stops bad replies live, and the judge measures what got through.
 
-- **A trade-off, not a bug.** The last failure is the stricter pricing rule handing off on "How is pricing calculated?". Whether that is desired is a call for the client's sales team, so the scenario expectation was left unchanged.
-- **The judge makes mistakes too.** It accepted the false "not supported" in fix-1 and flagged a correct prompt-leak refusal.
-  A human labelled 15 fix-2 answers (5 per scenario type, random): the judge agreed on **14 of 15 (93%)**. The miss: it accepted
-  "SOC 2 Type II audits conducted annually" and "HIPAA certifications"; the sources say routine audits and HIPAA compliance.
-  The check also found an answer with product facts and no citation, which is now flagged automatically (`uncited`).
+**3. Risk tiers.** Strictness follows the stakes:
 
-## Quick start (no keys needed)
+| Tier | Topics | Rule |
+|---|---|---|
+| Low | features, how-tos | paraphrase allowed, claims must be cited |
+| Medium | pricing, payroll, integrations | numbers and watch-words must appear in the quote; names are checked against the section |
+| High | security, compliance, AI and data, legal, UK payroll | **select, don't write**: the model picks approved sentence ids and code builds the reply |
+
+The tier is the highest signal from the question keywords, the retrieved sections and the claims. Within a conversation the tier only goes up.
+
+**4. A question list instead of handoff.** When the agent can't answer, it offers: *"Would you like me to add this question to the list to discuss with a HiBob team member?"* The conversation goes on, and sales gets a list of real open questions. If the buyer explicitly asks for a person, the conversation is handed over at once.
+
+**5. The release gate separates unsafe from over-cautious.** A wrong compliance claim and an unnecessary "let me check" are different failures.
+
+- The gate blocks on **unsafe high-risk failures only**. When it is unclear which kind a failure is, it counts as unsafe.
+- Over-cautious failures are reported and tracked, but they don't block a launch.
+- Severity is weighted by tier: an unsafe failure counts 1 at low, 3 at medium and 10 at high.
+
+## Results by run
+
+| Run | Change | Pass | Guard blocks | Cost |
+|---|---|---|---|---|
+| baseline | Prompt and knowledge base only | 14/30 | – | $0.56 |
+| fix-2 | No prices, no false "not supported" | 29/30 | – | $0.52 |
+| guard-1 | Pre-send guard (too strict on purpose) | 24/30 | 15 | $0.51 |
+| guard-2 | Guard false positives fixed | 27/30 | 3 | $0.53 |
+| park-1 | Question list, human handover | 27/30 | 1 | $0.58 |
+| reg-1 | +13 regression scenarios | 38/43 | 9 | $0.76 |
+| reg-3 | Invented-name check, tuned | 42/43 | 15 | $0.77 |
+| tier-3 | Risk tiers, select-don't-write | 39/43 | 23 | $0.78 |
+| tier-5 | Approved text passes at every tier | 41/43 | 17 | $0.77 |
+| **gate-1** | **Gate blocks on unsafe failures only** | **42/43** | 17 | $0.77 |
+
+The dips are deliberate. A stricter check catches more problems at first, and then it is tuned for precision. All 16 runs are in `docs/run_history.json`. `python scripts/plot_runs.py` renders `docs/run_history.html`.
+
+## Run it
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest -q                      # 48 tests, fake model and fake AWS
-python -m deploykit run --provider mock --name mock-baseline
-open runs/mock-baseline/report.html
+python -m pytest -q                                   # 178 tests, no keys needed
+python -m deploykit run --provider mock --name demo   # plumbing check, scores are meaningless
 ```
 
-The mock provider is a keyword matcher. It tests the plumbing; its scores mean nothing.
-
-## Live run
-
-Nebius Token Factory (open-weight models, OpenAI-compatible API):
+Live, on Nebius Token Factory (OpenAI-compatible, open-weight models):
 
 ```bash
 export NEBIUS_API_KEY=...
-python -m deploykit models                       # list available model ids
-export MODEL_AGENT=... MODEL_BUYER=... MODEL_JUDGE=...
-python -m deploykit run --provider nebius --name baseline --limit 3   # smoke test
-python -m deploykit run --provider nebius --name baseline
+python -m deploykit run --provider nebius --name baseline --limit 3        # smoke test
+python -m deploykit run --provider nebius --name fix-1 --compare-to runs/baseline
+python -m deploykit show runs/fix-1                                        # summary in the terminal
+python -m deploykit sample runs/fix-1 --n 15 && python -m deploykit agreement runs/fix-1
 ```
 
-Anthropic API:
+Useful flags for comparisons: `--no-guard`, `--no-tiers` and `--approved`. Providers `anthropic` and `bedrock` are wired up too. Bedrock needs model ids filled in `config/models.json`.
 
-```bash
-export ANTHROPIC_API_KEY=...             # a key with a spending limit
-python -m deploykit run --provider anthropic --name baseline --limit 3   # smoke test
-python -m deploykit run --provider anthropic --name baseline
-```
+**GitHub Actions.** The workflows:
 
-Amazon Bedrock (uses your AWS credentials, no API key):
+- `tests` runs on every push.
+- `live run` runs the suite on demand, using the `NEBIUS_API_KEY` secret. It prints the summary and attaches the HTML report.
+- `list models` lists the model ids the key can use.
+- `deploy` ships the AWS stack through OIDC, so no AWS keys are stored.
 
-1. In the Bedrock console, enable access to the Claude models in your region.
-2. Put the inference profile ids in `config/models.json` under `bedrock`.
-3. `python -m deploykit run --provider bedrock --name baseline`
+**AWS.** The AWS CDK stack has:
 
-Fill `prices_usd_per_million_tokens` in `config/models.json` to get the run cost in USD.
-Token counts are always recorded.
+- S3 plus CloudFront for the reports;
+- a Fargate task that runs the suite nightly, scheduled by EventBridge;
+- a GitHub OIDC role.
 
-## Fix, rerun, compare
-
-```bash
-# edit kb/ or config/client.json based on the report, then:
-python -m deploykit run --provider bedrock --name after-fix-1 --compare-to runs/baseline
-python -m deploykit sample runs/after-fix-1 --n 15     # label human_grounded in labels.csv
-python -m deploykit agreement runs/after-fix-1
-```
-
-## Deploy the nightly job to AWS
-
-Needs the AWS CDK CLI (`npm install -g aws-cdk`) and Docker.
-
-```bash
-cdk bootstrap        # once per account and region
-cdk deploy
-```
-
-Outputs: the bucket name, the public report URL (CloudFront), and the cluster and task definition
-for a manual run. The schedule runs at 02:17 UTC. Costs at this scale: cents a month for S3,
-CloudFront and Fargate, plus model usage on Bedrock. `cdk destroy` removes everything.
-
-## Running from GitHub Actions (no AWS keys stored)
-
-One-time, from a laptop with AWS credentials:
-
-```bash
-cdk bootstrap
-cdk deploy GitHubAccess          # prints RoleArn
-```
-
-Then in the repo's Settings → Secrets and variables → Actions → Variables, add `AWS_ROLE_ARN`,
-`MODEL_AGENT`, `MODEL_JUDGE`, `MODEL_BUYER`. Workflows:
-
-- **tests**: runs on every push.
-- **deploy**: deploys the report site and nightly job; add its bucket output as `REPORT_BUCKET`.
-- **list models**: prints the Nebius model ids your key can use.
-- **live run**: runs the suite on Nebius or Bedrock on demand; `compare_to` diffs against an earlier run; with `REPORT_BUCKET` set it publishes and
-  diffs against the previous run. The report is attached to the workflow run.
+Deploy it with `cdk deploy` and remove it with `cdk destroy`. At this scale it costs cents a month, plus model usage.
 
 ## Layout
 
 ```
-kb/                 knowledge base notes, one file per public page
-config/client.json  agent goal, personas, qualification, handoff rules
-config/models.json  model ids per role and provider, prices
-suite/              simulation scenarios
-deploykit/          agent, judge, simulator, runner, report, publish, nightly job, CLI
-infra/              AWS CDK stack
-tests/              48 tests, written before the code
+kb/                      15 notes from public hibob.com pages (89 chunks, BM25 retrieval)
+config/client.json       goal, personas, park and handoff rules, glossary, risk keywords and tiers
+config/approved_answers  approved sentences for high-risk topics (drafts)
+config/models.json       model per role and provider, prices
+suite/scenarios.json     43 scenarios: expected, ambiguous, adversarial, regression
+deploykit/               agent, guard, risk, judge, simulator, runner, report, CLI, nightly job
+infra/                   AWS CDK stacks
+scripts/plot_runs.py     run-history chart
+tests/                   178 tests, written before the code they cover
 ```
+
+## Known limits
+
+- **Simulated buyers aren't real buyers.** The suite is a floor, not proof. The next step is to replay real transcripts.
+- **Backups and disaster recovery.** The model doesn't always pick the right approved sentence, which gives the one over-cautious failure. A planned fix: code pre-selects the candidate sentences for each question.
+- **The judge is imperfect.** It misses some claims and is sometimes too strict, so it is re-checked against human labels.
+- **The knowledge base is a snapshot.** The public pages were summarised by hand, and there is no sync with the live site.
