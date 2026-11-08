@@ -1,0 +1,222 @@
+{
+ "_note": "Live runs on Nebius Token Factory. Agent and buyer: Qwen/Qwen3-235B-A22B-Instruct-2507; judge: deepseek-ai/DeepSeek-V4-Pro. Built from GitHub Actions run logs, 2026-11-07 to 2026-11-08.",
+ "runs": [
+  {
+   "run": "baseline",
+   "change": "Baseline",
+   "passed": 14,
+   "sessions": 30,
+   "cost_usd": 0.56,
+   "replies": 51,
+   "guard": false,
+   "blocked": null,
+   "fallbacks": null,
+   "replies_by_tier": null
+  },
+  {
+   "run": "fix-1",
+   "change": "JSON replay, no prices",
+   "passed": 25,
+   "sessions": 30,
+   "cost_usd": 0.53,
+   "replies": 48,
+   "guard": false,
+   "blocked": null,
+   "fallbacks": null,
+   "replies_by_tier": null
+  },
+  {
+   "run": "fix-2",
+   "change": "No false 'not supported'",
+   "passed": 29,
+   "sessions": 30,
+   "cost_usd": 0.52,
+   "replies": 47,
+   "guard": false,
+   "blocked": null,
+   "fallbacks": null,
+   "replies_by_tier": null
+  },
+  {
+   "run": "guard-1",
+   "change": "Pre-send guard (too strict)",
+   "passed": 24,
+   "sessions": 30,
+   "cost_usd": 0.51,
+   "replies": 44,
+   "guard": true,
+   "blocked": 15,
+   "fallbacks": 10,
+   "replies_by_tier": null
+  },
+  {
+   "run": "guard-2",
+   "change": "Guard false positives fixed",
+   "passed": 27,
+   "sessions": 30,
+   "cost_usd": 0.53,
+   "replies": 47,
+   "guard": true,
+   "blocked": 3,
+   "fallbacks": 1,
+   "replies_by_tier": null
+  },
+  {
+   "run": "park-1",
+   "change": "Question list, human handover",
+   "passed": 27,
+   "sessions": 30,
+   "cost_usd": 0.58,
+   "replies": 51,
+   "guard": true,
+   "blocked": 1,
+   "fallbacks": 0,
+   "replies_by_tier": null
+  },
+  {
+   "run": "uncited-1",
+   "change": "Answers need quoted claims",
+   "passed": 27,
+   "sessions": 30,
+   "cost_usd": 0.58,
+   "replies": 51,
+   "guard": true,
+   "blocked": 6,
+   "fallbacks": 0,
+   "replies_by_tier": null
+  },
+  {
+   "run": "reg-1",
+   "change": "+13 regression scenarios",
+   "passed": 38,
+   "sessions": 43,
+   "cost_usd": 0.76,
+   "replies": 66,
+   "guard": true,
+   "blocked": 9,
+   "fallbacks": 1,
+   "replies_by_tier": null
+  },
+  {
+   "run": "reg-2",
+   "change": "Invented-name check",
+   "passed": 42,
+   "sessions": 43,
+   "cost_usd": 0.78,
+   "replies": 66,
+   "guard": true,
+   "blocked": 25,
+   "fallbacks": 2,
+   "replies_by_tier": null
+  },
+  {
+   "run": "reg-3",
+   "change": "Name check precision",
+   "passed": 42,
+   "sessions": 43,
+   "cost_usd": 0.77,
+   "replies": 66,
+   "guard": true,
+   "blocked": 15,
+   "fallbacks": 1,
+   "replies_by_tier": null
+  },
+  {
+   "run": "tier-1",
+   "change": "Risk tiers",
+   "passed": 38,
+   "sessions": 43,
+   "cost_usd": 0.77,
+   "replies": 66,
+   "guard": true,
+   "blocked": 18,
+   "fallbacks": 7,
+   "replies_by_tier": {
+    "low": 16,
+    "medium": 29,
+    "high": 21
+   }
+  },
+  {
+   "run": "tier-2",
+   "change": "Approval per sentence",
+   "passed": 37,
+   "sessions": 43,
+   "cost_usd": 0.77,
+   "replies": 66,
+   "guard": true,
+   "blocked": 18,
+   "fallbacks": 11,
+   "replies_by_tier": {
+    "low": 16,
+    "medium": 28,
+    "high": 22
+   }
+  },
+  {
+   "run": "tier-3",
+   "change": "Select, don't write",
+   "passed": 39,
+   "sessions": 43,
+   "cost_usd": 0.78,
+   "replies": 66,
+   "guard": true,
+   "blocked": 23,
+   "fallbacks": 6,
+   "replies_by_tier": {
+    "low": 18,
+    "medium": 29,
+    "high": 19
+   }
+  },
+  {
+   "run": "tier-4",
+   "change": "Medium-tier name scope",
+   "passed": 39,
+   "sessions": 43,
+   "cost_usd": 0.77,
+   "replies": 66,
+   "guard": true,
+   "blocked": 20,
+   "fallbacks": 3,
+   "replies_by_tier": {
+    "low": 17,
+    "medium": 30,
+    "high": 19
+   }
+  },
+  {
+   "run": "tier-5",
+   "change": "Approved text at every tier",
+   "passed": 41,
+   "sessions": 43,
+   "cost_usd": 0.77,
+   "replies": 66,
+   "guard": true,
+   "blocked": 17,
+   "fallbacks": 4,
+   "replies_by_tier": {
+    "low": 17,
+    "medium": 29,
+    "high": 20
+   }
+  }
+ ],
+ "latest_by_tier": {
+  "run": "tier-5",
+  "sessions": {
+   "high": {
+    "sessions": 14,
+    "passed": 12
+   },
+   "medium": {
+    "sessions": 18,
+    "passed": 18
+   },
+   "low": {
+    "sessions": 11,
+    "passed": 11
+   }
+  }
+ }
+}
