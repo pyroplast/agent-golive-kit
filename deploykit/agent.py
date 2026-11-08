@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import re
 
-from deploykit.guard import check_reply
+from deploykit.guard import approved_sources, check_reply
 from deploykit.kb import BM25Index, Chunk, format_kb
 from deploykit.risk import RiskPolicy, max_tier
 
@@ -165,6 +165,20 @@ class DemoAgent:
                         park=None)
         return turn
 
+    def _classify(self, pre_tier, question, turn):
+        """Tier after drafting. Using approved security text implies the tier of its sources."""
+        if not self.policy:
+            return None
+        used = approved_sources(turn["reply"], self.policy.approved)
+        return max_tier(pre_tier, self.policy.classify(question, turn["citations"] + used, turn["claims"]))
+
+    def _cite_approved(self, turn):
+        if self.policy and turn.get("tier") == "high" and not turn.get("handoff"):
+            for s in approved_sources(turn["reply"], self.policy.approved):
+                if s in self.ids and s not in turn["citations"]:
+                    turn["citations"].append(s)
+        return turn
+
     def _system(self, sources, parked, tier):
         system = build_system_prompt(self.config, sources, parked)
         return system + ("\n\n" + self.policy.prompt_block(tier) if self.policy and tier else "")
@@ -181,8 +195,7 @@ class DemoAgent:
         meta = {"chunks": sources, "lang": lang}
         r = self.llm.complete("agent", system, replay, meta=meta)
         turn = self._to_turn(*self._parse(r.text))
-        tier = (max_tier(pre_tier, self.policy.classify(last_q, turn["citations"], turn["claims"]))
-                if self.policy else None)
+        tier = self._classify(pre_tier, last_q, turn)
         turn["tier"] = tier
         if not self.guard:
             turn["guard"] = {"enabled": False}
@@ -210,6 +223,7 @@ class DemoAgent:
             if final:
                 fell_back = True
                 turn = {**self._to_turn({}, False), "reply": FALLBACK_REPLY, "park": last_q or None, "tier": tier}
+        self._cite_approved(turn)
         turn["guard"] = {"enabled": True, "retried": retried, "fell_back": fell_back,
                          "first_problems": first, "final_problems": final,
                          "blocked_draft": blocked_draft}

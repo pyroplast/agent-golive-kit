@@ -18,10 +18,11 @@ TIER_RULES = {
             "that the sources do not state."),
     "medium": ("RISK TIER: medium (commercial). Every number and name you state must be inside the words you quote. "
                "If you cannot quote it, offer to add the question to the list."),
-    "high": ("RISK TIER: high (legal, security, compliance, money). Answer ONLY with one approved answer below, copied "
-             "word for word, and set \"approved_answer\" to its id. You may add a short greeting or one question. "
-             "If no approved answer fits, do not answer: offer to add the question to the list. Never give legal "
-             "or tax advice."),
+    "high": ("RISK TIER: high (legal, security, compliance, money). State facts ONLY with sentences copied word for "
+             "word from the approved answers below. You may use a single sentence, or combine sentences from several "
+             "answers, and add a short greeting or one question. Do not reword them. If they do not fully answer the "
+             "question, say what they do say and offer to add the question to the list. Never give legal or tax "
+             "advice."),
 }
 
 

@@ -120,27 +120,43 @@ def _missing_names(text: str, allowed: str, glossary: set[str] = frozenset()) ->
     return sorted(out)
 
 
+def _units(text: str) -> list[str]:
+    """Sentence-level units, also split at semicolons, so approved text can be reused one statement at a time."""
+    return [u.strip() for u in re.split(r"(?<=[.;!?])\s+", text) if u.strip()]
+
+
+def _approved_index(approved: list[dict]) -> dict[str, list[str]]:
+    """Normalised approved sentence -> sources of the answers it belongs to."""
+    index: dict[str, list[str]] = {}
+    for a in approved or []:
+        for u in _units(a["text"]):
+            index.setdefault(_norm(u), []).extend(a.get("sources", []))
+    return index
+
+
+def approved_sources(reply: str, approved: list[dict]) -> list[str]:
+    """Sources behind the approved sentences used in a reply (they become its citations)."""
+    index, out = _approved_index(approved), []
+    for u in _units(strip_markup(reply)):
+        for s in index.get(_norm(u), []):
+            if s not in out:
+                out.append(s)
+    return out
+
+
 def _check_high(draft: dict, approved: list[dict], add) -> None:
-    """High tier: facts may only come from a pre-approved answer, copied word for word."""
-    reply = str(draft.get("reply", ""))
-    by_id = {a["id"]: a for a in approved or []}
-    aid = draft.get("approved_answer")
-    if aid:
-        a = by_id.get(aid)
-        if a is None:
-            add("approved_answer_altered", f"unknown approved answer id {aid}")
-            return
-        if _norm(a["text"]) not in _norm(reply):
-            add("approved_answer_altered", f"{aid}: reply does not contain the approved text word for word")
-            return
-        rest = reply.replace(a["text"], " ")
-        extra = factual_sentences(rest)
-        if extra:
-            add("high_risk_unapproved", f"added to approved answer {aid}: {extra[0][:80]}")
-        return
-    facts = factual_sentences(reply)
-    if facts or (draft.get("claims") or []):
-        add("high_risk_unapproved", (facts[0] if facts else "claims without an approved answer")[:80])
+    """High tier: every factual statement must be an approved sentence, word for word.
+
+    Approval is per sentence (tier-1: whole-answer approval parked questions the sources answer), so sentences
+    from several approved answers can be combined, and greetings, questions and list offers need no approval.
+    """
+    index = _approved_index(approved)
+    unapproved = [u for s in factual_sentences(str(draft.get("reply", ""))) for u in _units(s)
+                  if _norm(u) not in index]
+    for u in unapproved:
+        add("high_risk_unapproved", u[:80])
+    if not unapproved and not factual_sentences(str(draft.get("reply", ""))) and (draft.get("claims") or []):
+        add("high_risk_unapproved", "claims without approved sentences")
 
 
 def check_reply(draft: dict, chunks: list[Chunk], user_text: str = "", glossary=frozenset(),

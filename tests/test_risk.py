@@ -99,9 +99,54 @@ def test_high_accepts_the_approved_text_verbatim(chunks):
 
 
 def test_high_rejects_an_edited_approved_answer(chunks):
+    """Spec change after tier-1: approval is per sentence, so an edited sentence is simply unapproved."""
     d = {"reply": "HiBob is ISO 27001 and HIPAA certified with SOC 2 Type II audits.",
          "approved_answer": "sec-certs", "handoff": False, "unknown": False, "claims": []}
-    assert "approved_answer_altered" in types(check_reply(d, chunks, "", tier="high", approved=APPROVED))
+    assert "high_risk_unapproved" in types(check_reply(d, chunks, "", tier="high", approved=APPROVED))
+
+
+# --- tier-1 findings: approval per sentence, combinable, cited ---------------------
+
+APPROVED2 = APPROVED + [{"id": "sec-hosting", "sources": ["security#2"], "status": "draft",
+                          "text": "Bob is hosted on AWS. The primary region is Ireland; backups are in Germany."}]
+
+
+def test_high_accepts_one_sentence_from_inside_an_approved_answer(chunks):
+    """tier-1: 'Can we switch AI off?' is answered by one sentence of a longer approved answer."""
+    d = {"reply": "Sure. The primary region is Ireland.", "handoff": False, "unknown": False, "claims": []}
+    assert check_reply(d, chunks, "", tier="high", approved=APPROVED2)["ok"]
+
+
+def test_high_accepts_sentences_combined_from_two_approved_answers(chunks):
+    """tier-1: 'backups and disaster recovery' needed sentences from two approved answers."""
+    d = {"reply": "Bob is hosted on AWS. HiBob is ISO 27001 certified with SOC 2 Type II audits.",
+         "handoff": False, "unknown": False, "claims": []}
+    assert check_reply(d, chunks, "", tier="high", approved=APPROVED2)["ok"]
+
+
+def test_high_rejects_an_unapproved_sentence_next_to_approved_ones(chunks):
+    d = {"reply": "Bob is hosted on AWS. US-only hosting is available on request.",
+         "handoff": False, "unknown": False, "claims": []}
+    r = check_reply(d, chunks, "", tier="high", approved=APPROVED2)
+    assert "high_risk_unapproved" in types(r)
+    assert any("US-only" in p["detail"] for p in r["problems"])
+
+
+def test_approved_sentences_carry_their_sources_as_citations(config, chunks):
+    """tier-1: a correct approved reply failed as 'uncited' because it cited nothing."""
+    llm = SeqLLM(out(reply="Bob is hosted on AWS. The primary region is Ireland; backups are in Germany."))
+    a = DemoAgent(dict(config, risk=RISK), chunks, llm, approved=APPROVED2)
+    turn = a.respond([{"role": "user", "content": "Where is data hosted? security"}], lang="en")
+    assert turn["tier"] == "high" and turn["guard"]["fell_back"] is False
+    assert turn["citations"] == ["security#2"]
+
+
+def test_high_prompt_tells_the_agent_to_combine_sentences_and_offer_the_list(config, chunks):
+    llm = SeqLLM(out(reply="Shall I add that to the list?", park="x"))
+    DemoAgent(dict(config, risk=RISK), chunks, llm, approved=APPROVED2).respond(
+        [{"role": "user", "content": "Are you GDPR compliant?"}], lang="en")
+    system = llm.calls[0]["system"]
+    assert "sentence" in system and "offer to add" in system
 
 
 def test_high_allows_park_refusal_and_handoff_without_approved_text(chunks):
