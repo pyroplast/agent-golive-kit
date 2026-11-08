@@ -242,3 +242,18 @@ def test_openai_compat_streams_and_records_usage_and_first_token():
     assert "".join(llm.stream("agent", "s", [])) == "Hello"
     s = tracker.summary()
     assert s["by_role"]["agent"]["input_tokens"] == 100 and s["by_role"]["agent"]["calls"] == 1
+
+
+def test_live_format_asks_for_evidence_before_each_sentence():
+    # calls-live-2: 29 sentences stated facts with no claim on their line; quote-first ordering and an example fix it
+    from deploykit.live import LIVE_SPEC
+    first_line = next(l for l in LIVE_SPEC.splitlines() if l.startswith('{"claims"'))
+    assert first_line.index('"claims"') < first_line.index('"say"')
+    assert "evidence FIRST" in LIVE_SPEC and "integrations#2" in LIVE_SPEC
+
+
+def test_claims_first_lines_parse(config, pricing_chunks):
+    clock = Clock()
+    line = {"claims": [{"source": "pricing#1", "quote": "Pricing is quote-based"}], "say": "Pricing is quote-based."}
+    t = ask(live(config, pricing_chunks, StreamLLM([line, {"end": True}], clock), clock), "How is pricing set?")
+    assert t["reply"] == "Pricing is quote-based." and t["citations"] == ["pricing#1"]

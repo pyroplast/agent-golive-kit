@@ -22,10 +22,15 @@ from deploykit.guard import approved_sources
 from deploykit.risk import max_tier
 
 LIVE_SPEC_MARK = "ONE LINE PER SENTENCE"
-LIVE_SPEC = f"""Reply as JSON LINES, {LIVE_SPEC_MARK}, so the prospect hears each sentence as soon as it is ready:
-{{"say": "<one sentence you say to the prospect>", "claims": [{{"text": "<the fact it states>", "source": "<chunk id>", "quote": "<exact words from that chunk>"}}]}}
-Every fact needs a claim on the SAME line as its sentence. A sentence with no facts (a question, a greeting, an offer
-to add the question to the list) has "claims": [].
+LIVE_SPEC = f"""Reply as JSON LINES, {LIVE_SPEC_MARK}, so the prospect hears each sentence as soon as it is ready.
+On each line write the evidence FIRST, then the sentence that uses it:
+{{"claims": [{{"source": "<chunk id>", "quote": "<exact words copied from that chunk>"}}], "say": "<one sentence>"}}
+Example lines:
+{{"claims": [{{"source": "integrations#2", "quote": "Jira"}}], "say": "Bob connects to Jira."}}
+{{"claims": [], "say": "Which other tools does your team use?"}}
+A sentence that states ANY fact about Bob or HiBob, including a name, number or feature, must have at least one
+claim on its own line; if you cannot quote it, leave the sentence out. Only questions, greetings and the offer to
+add a question to the list have "claims": [].
 At HIGH risk, do not write facts yourself: send one line per approved sentence instead: {{"approved": "<approved sentence id>"}}
 Put the most useful sentence first and keep it short. Two to four sentences in total.
 Last line: {{"end": true, "kind": "<answer | clarify | refuse>", "handoff": <true|false>, "handoff_reason": <string or null>, "unknown": <true|false>, "park": <the question or null>, "qualification": {{}}}}
