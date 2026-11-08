@@ -90,7 +90,7 @@ def test_agent_accepts_bracketed_citation_ids(config, chunks):
     llm = FixedLLM(json.dumps({"reply": "x", "citations": ["[security#2]", " pricing#1 "],
                                 "handoff": False, "handoff_reason": None, "unknown": False,
                                 "qualification": {}}))
-    turn = DemoAgent(config, chunks, llm).respond([{"role": "user", "content": "q"}], lang="en")
+    turn = DemoAgent(config, chunks, llm, guard=False).respond([{"role": "user", "content": "q"}], lang="en")
     assert turn["citations"] == ["security#2", "pricing#1"]
     assert turn["invalid_citations"] == []
 
