@@ -15,12 +15,15 @@ on:
       suite:
         description: "questions = 43 single questions; calls = 5 demo calls of 15 turns"
         type: choice
-        options: [questions, calls]
+        options: [questions, calls, judgecheck]
         default: questions
       live:
         description: "calls only: stream sentence by sentence, fast model for easy turns, filler line"
         type: boolean
         default: false
+      judge_models:
+        description: "judgecheck only: comma-separated judge model ids (empty = configured judge)"
+        default: ""
       name:
         description: Run name
         required: true
@@ -69,6 +72,10 @@ jobs:
           name: run-${{ inputs.compare_to }}
           path: work/runs/${{ inputs.compare_to }}
           if_no_artifact_found: warn
+
+      - name: Compare judge models on the judge test set
+        if: ${{ inputs.suite == 'judgecheck' }}
+        run: python -m deploykit judgecheck --provider ${{ inputs.provider }} --judge-models "${{ inputs.judge_models }}"
 
       - name: Run the call suite
         if: ${{ inputs.suite == 'calls' }}

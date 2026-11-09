@@ -138,8 +138,25 @@ against the sources; your job is the call as a whole. Be strict and literal.
   modules of interest, timeline), as short values. Only what the buyer actually said.
 - notes: one short sentence on how the call went.
 
+For every contradiction give "evidence": the two agent sentences that contradict each other, copied word for word
+from the transcript, each with its turn number. A contradiction without both quotes is ignored.
+
 Reply with ONE JSON object with exactly these keys:
-{"contradictions": [{"turns": [int, int], "detail": str}], "qualification": {str: str}, "notes": str}"""
+{"contradictions": [{"turns": [int, int], "detail": str, "evidence": [{"turn": int, "quote": str}, {"turn": int, "quote": str}]}],
+ "qualification": {str: str}, "notes": str}"""
+
+
+def _norm(text: str) -> str:
+    return " ".join(re.sub(r"[^a-z0-9%$€£#]+", " ", str(text).lower()).split())
+
+
+_DECLINED = re.compile(r"can['’]?t confirm|cannot confirm|not able to confirm|rather not guess|don['’]?t want to guess|"
+                       r"sources do not|sources don['’]?t|add (?:this|your|it|that)[^.?!]{0,60}to the list", re.I)
+
+
+def _declined(agent: dict) -> bool:
+    """The agent held back in this turn: it parked the question or said it could not confirm."""
+    return bool(agent.get("park")) or bool(_DECLINED.search(agent.get("reply", "")))
 
 
 _NOT_A_CONTRADICTION = re.compile(r"\b(?:no|not an?|isn't an?|is not an?)\s+(?:actual\s+|direct\s+|real\s+)?contradiction", re.I)
@@ -162,13 +179,39 @@ class CallJudge:
             data = parse_json(r.text)
             if not isinstance(data.get("contradictions"), list):
                 raise ValueError("no contradictions list")
-            def two_turns(c):
-                if not isinstance(c, dict) or _NOT_A_CONTRADICTION.search(str(c.get("detail", ""))):
-                    return False  # the judge itself says it is not one
-                return len({n for n in c.get("turns", []) if isinstance(n, int)}) >= 2
-            return {"contradictions": [c for c in data["contradictions"] if two_turns(c)],
-                    "qualification": data.get("qualification") or {}, "notes": str(data.get("notes", "")),
-                    "judge_error": False}
         except ValueError:
-            return {"contradictions": [], "qualification": {}, "notes": "call judge output unreadable",
-                    "judge_error": True}
+            return {"contradictions": [], "dropped": [], "qualification": {},
+                    "notes": "call judge output unreadable", "judge_error": True}
+        by_turn = {t["n"]: t for t in turns}
+        kept, dropped = [], []
+        for c in data["contradictions"]:
+            why = self._reject(c, by_turn)
+            if why:
+                dropped.append({**(c if isinstance(c, dict) else {"raw": c}), "why": why})
+                continue
+            ev_turns = [e["turn"] for e in c["evidence"]]
+            declined = any(_declined(by_turn[n]["agent"]) for n in ev_turns)
+            kept.append({**c, "turns": sorted(set(ev_turns)),
+                         "kind": "declined_then_answered" if declined else "opposite"})
+        return {"contradictions": kept, "dropped": dropped, "qualification": data.get("qualification") or {},
+                "notes": str(data.get("notes", "")), "judge_error": False}
+
+    @staticmethod
+    def _reject(c, by_turn) -> str | None:
+        """Why a reported contradiction does not stand, or None if it does: both quotes must be in the agent's
+        own replies, in two different turns."""
+        if not isinstance(c, dict):
+            return "not an object"
+        if _NOT_A_CONTRADICTION.search(str(c.get("detail", ""))):
+            return "the judge says it is not a contradiction"
+        ev = [e for e in c.get("evidence") or [] if isinstance(e, dict) and isinstance(e.get("turn"), int)]
+        if len(ev) < 2:
+            return "no evidence quotes"
+        if len({e["turn"] for e in ev}) < 2:
+            return "both quotes in one turn"
+        for e in ev:
+            t = by_turn.get(e["turn"])
+            q = _norm(e.get("quote", ""))
+            if t is None or not q or q not in _norm(t["agent"].get("reply", "")):
+                return f"quote not found in turn {e['turn']}"
+        return None

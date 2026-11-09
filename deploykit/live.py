@@ -64,10 +64,12 @@ class LiveAgent(DemoAgent):
 
         said, claims, approved_cites, end = [], [], [], {}
         tier, first_at, problems, failed, skipped = pre_tier, None, [], None, 0
+        skip_at = None  # where the first dropped sentence would have been said
         buf, stop = "", False
+        first_skip_s = [None]
 
         def handle(line):
-            nonlocal tier, first_at, problems, failed, skipped, end
+            nonlocal tier, first_at, problems, failed, skipped, end, skip_at
             line = line.strip().strip("`")
             if not line:
                 return False
@@ -98,6 +100,8 @@ class LiveAgent(DemoAgent):
             if found:  # drop this sentence, keep streaming the rest
                 problems, failed = problems + found, failed or say
                 skipped += 1
+                if skip_at is None:
+                    skip_at, first_skip_s[0] = len(said), self.clock() - t0
                 return False
             said.append(say)
             claims.extend(c)
@@ -114,6 +118,20 @@ class LiveAgent(DemoAgent):
                 break
         if not stop and buf.strip():
             stop = handle(buf)
+
+        # Dropped sentences on a question that matches a client-approved answer: say the approved answer instead
+        # of parking (calls-live-3: AI questions parked at turns 3-4, then answered at turn 5).
+        substitute = self.policy.matching(last_q) if (skipped and self.policy) else []
+        if substitute and len(substitute) <= 2:
+            texts = {a["id"]: a for a in self.policy.approved}
+            said[skip_at:skip_at] = [texts[m]["text"] for m in substitute]
+            approved_cites.extend(s for m in substitute for s in texts[m].get("sources", []) if s in self.ids)
+            tier = max_tier(tier or "low", "high")
+            if first_at is None or skip_at == 0:
+                first_at = first_skip_s[0] if first_at is None else min(first_at, first_skip_s[0])
+            skipped = 0
+        else:
+            substitute = []
 
         if not said:  # the first sentence failed, or nothing usable came back: slow path behind a filler
             filler_at = min(self.clock() - t0, FILLER_AFTER_S)
@@ -149,7 +167,8 @@ class LiveAgent(DemoAgent):
             turn["reply"] = (turn["reply"].rstrip() + " " + self.config.get("park_offer", "")).strip()
         total = self.clock() - t0
         turn["guard"] = {"enabled": True, "streamed": True, "retried": False, "fell_back": False, "composed": False,
-                         "slow_path": False, "skipped": skipped, "first_problems": problems, "final_problems": [],
+                         "slow_path": False, "skipped": skipped, "approved_substitute": substitute,
+                         "first_problems": problems, "final_problems": [],
                          "blocked_draft": failed}
         turn["model_role"] = role
         turn["timing"] = {"streamed": True, "filler": filler,

@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 from deploykit.kb import load_kb
-from deploykit.llm import AnthropicLLM, BedrockLLM, MockLLM, OpenAICompatLLM
+from deploykit.llm import CostTracker, TrackedLLM, AnthropicLLM, BedrockLLM, MockLLM, OpenAICompatLLM
 from deploykit.report import build_report, load_rows, write_diff_md
 from deploykit.runner import run_suite
 from deploykit.scenarios import load_scenarios, validate_scenarios
@@ -104,7 +104,8 @@ def cmd_calls(a):
                         workers=a.workers, retrieval=a.retrieval, provider=a.provider,
                         guard=not a.no_guard, approved=_approved(a), live=a.live, fast=a.fast)
     report = build_report(run_dir)
-    s = summarize_calls(load_call_rows(run_dir))
+    from deploykit.gate import load_reviews
+    s = summarize_calls(load_call_rows(run_dir), reviews=load_reviews(run_dir.name, ROOT / "reviews"))
     stages = " · ".join(f"turns {k}: {v['rate']:.0%}" for k, v in s["by_stage"].items() if v["rate"] is not None)
     print(f"{run_dir.name}: {s['calls']} calls · {s['turns_passed']}/{s['turns']} turns passed · "
           f"{s['calls_passed']} clean calls · gate {'PASS' if s['gate']['passed'] else 'BLOCKED'} · "
@@ -113,7 +114,47 @@ def cmd_calls(a):
     print(f"  {stages} · reply time p50 {L['p50']}s, p90 {L['p90']}s, max {L['max']}s · first words p50 "
           f"{L['first_words_p50']}s, p90 {L['first_words_p90']}s · filler {L['filler_turns']} · fast model "
           f"{L['fast_model_turns']} turns")
+    for f in s["gate"]["findings"]:
+        print(f"  GATE FINDING {f['id']} [{f['kind']}] {f['detail'][:300]}")
+    if s["gate"]["over_cautious_contradictions"]:
+        print(f"  over-cautious contradictions (declined, answered later): {s['gate']['over_cautious_contradictions']}")
     print(f"report: {report}")
+    return 0
+
+
+def cmd_review(a):
+    """A person's decision on a gate-blocking finding, kept in the repo next to the code it judged."""
+    folder = Path(a.dir)
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{a.name}.json"
+    data = json.loads(path.read_text()) if path.exists() else {}
+    for fid in a.reject or []:
+        data[fid] = {"decision": "rejected", "note": a.note or ""}
+    for fid in a.confirm or []:
+        data[fid] = {"decision": "confirmed", "note": a.note or ""}
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    print(f"{path}: {len(data)} reviewed findings")
+    return 0
+
+
+def cmd_judgecheck(a):
+    from deploykit.judgecheck import run_judge_check
+    items = json.loads(Path(a.items).read_text())
+    chunks = load_kb(a.kb)
+    if a.provider == "mock":
+        llms = [("mock", MockLLM(), {})]
+    else:
+        models, prices, _ = _models(a.models, a.provider)
+        names = [m.strip() for m in (a.judge_models or models["judge"]).split(",") if m.strip()]
+        llms = [(m, OpenAICompatLLM({**models, "judge": m}), prices) for m in names]
+    for name, llm, prices in llms:
+        tracker = CostTracker(prices)
+        r = run_judge_check(TrackedLLM(llm, tracker), chunks, items)
+        print(f"{name}: agrees on {r['agree']}/{r['items']} · planted errors caught {r['caught']}/{r['bad']} · "
+              f"false alarms {r['false_alarms']}/{r['good']} · cost ${tracker.summary()['total_usd']:.3f}")
+        missed = [x["id"] for x in r["rows"] if not x["agree"]]
+        if missed:
+            print(f"  disagrees on: {', '.join(missed)}")
     return 0
 
 
@@ -271,6 +312,22 @@ def build_parser():
     c.add_argument("--no-tiers", action="store_true")
     c.add_argument("--approved", default=str(ROOT / "config" / "approved_answers.json"))
     c.set_defaults(fn=cmd_calls)
+
+    rv = sub.add_parser("review", help="record a person's decision on a gate-blocking finding")
+    rv.add_argument("--name", required=True, help="run name")
+    rv.add_argument("--reject", action="append", help="finding id the person found to be a false alarm")
+    rv.add_argument("--confirm", action="append", help="finding id the person confirmed")
+    rv.add_argument("--note")
+    rv.add_argument("--dir", default=str(ROOT / "reviews"))
+    rv.set_defaults(fn=cmd_review)
+
+    jc = sub.add_parser("judgecheck", help="score judge models on the judge test set")
+    jc.add_argument("--provider", choices=["mock", "nebius"], default="mock")
+    jc.add_argument("--judge-models", help="comma-separated model ids (default: the configured judge)")
+    jc.add_argument("--items", default=str(ROOT / "suite" / "judge_calibration.json"))
+    jc.add_argument("--kb", default=str(ROOT / "kb"))
+    jc.add_argument("--models", default=str(ROOT / "config" / "models.json"))
+    jc.set_defaults(fn=cmd_judgecheck)
 
     ml = sub.add_parser("models", help="list models on Nebius Token Factory"); ml.set_defaults(fn=cmd_models)
     sh = sub.add_parser("show", help="print every conversation"); sh.add_argument("run")

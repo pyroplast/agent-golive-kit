@@ -1,0 +1,349 @@
+[
+ {
+  "id": "real-01",
+  "origin": "labelled by hand (fix-2 sample)",
+  "scenario": "exp-06-reviews",
+  "history": [
+   {
+    "role": "user",
+    "content": "Can we run 360 reviews and calibration in Bob?"
+   },
+   {
+    "role": "assistant",
+    "content": "Yes, Bob supports 360 reviews with customizable templates, timelines, and approval flows. It also includes a calibration agent with drag-and-drop 9-box grids for performance calibration. Managers own the final decisions, while AI helps summarize feedback and draft reviews. Would you like to know how it integrates with goals or performance cycles?"
+   }
+  ],
+  "asked": "Does it support OKRs too?",
+  "reply": "Yes, Bob supports OKRs with AI-assisted goal drafting, goal levels aligned to your org structure, and integration with performance reviews. Goals can be linked to OKRs and tracked within the Performance module. Would you like to know how OKRs connect with 360 feedback or performance cycles?",
+  "handoff": false,
+  "grounded": true,
+  "why": "checked against the source section"
+ },
+ {
+  "id": "real-02",
+  "origin": "labelled by hand (fix-2 sample)",
+  "scenario": "exp-02-certs",
+  "history": [],
+  "asked": "Which security certifications do you have?",
+  "reply": "HiBob complies with GDPR and holds ISO 27001, SOC 2, and HIPAA certifications. Our SOC 2 reports are available upon request under NDA, and ISO certificates can be shared without NDA. We are also certified under ISO 27001:2022 and ISO 27018:2025, with routine SOC 2 Type II audits conducted annually.",
+  "handoff": false,
+  "grounded": false,
+  "why": "HIPAA is listed as compliance, not a certification"
+ },
+ {
+  "id": "real-03",
+  "origin": "labelled by hand (fix-2 sample)",
+  "scenario": "exp-10-comp",
+  "history": [
+   {
+    "role": "user",
+    "content": "Can we set compensation budgets that managers can't exceed?"
+   },
+   {
+    "role": "assistant",
+    "content": "Yes, Bob's Compensation module supports real-time budget tracking with Finance-approved guardrails and alerts to prevent managers from exceeding their budgets. This is part of the Compensation add-on module, which includes scenario modeling and approval workflows to ensure budget control. Would you like to know more about how budget guardrails work during compensation cycles?"
+   }
+  ],
+  "asked": "Does it work across currencies and entities?",
+  "reply": "Yes, Bob supports multi-currency, multi-entity and multi-geo compensation cycles, with local pay band adjustments. This allows organizations to manage compensation budgets across different countries and entities while maintaining centralized control. Are you managing compensation across multiple regions or entities?",
+  "handoff": false,
+  "grounded": true,
+  "why": "checked against the source section"
+ },
+ {
+  "id": "real-04",
+  "origin": "labelled by hand (fix-2 sample)",
+  "scenario": "exp-10-comp",
+  "history": [],
+  "asked": "Can we set compensation budgets that managers can't exceed?",
+  "reply": "Yes, Bob's Compensation module supports real-time budget tracking with Finance-approved guardrails and alerts to prevent managers from exceeding their budgets. This is part of the Compensation add-on module, which includes scenario modeling and approval workflows to ensure budget control. Would you like to know more about how budget guardrails work during compensation cycles?",
+  "handoff": false,
+  "grounded": true,
+  "why": "checked against the source section"
+ },
+ {
+  "id": "real-05",
+  "origin": "labelled by hand (fix-2 sample)",
+  "scenario": "exp-04-api",
+  "history": [
+   {
+    "role": "user",
+    "content": "Is there an API we can build our own integrations on?"
+   },
+   {
+    "role": "assistant",
+    "content": "Yes, you can build custom integrations using Bob's Public HR API, which supports webhooks. If an integration isn't listed in the marketplace, a partner can create it for you. Let me know if you'd like details on specific use cases or need help identifying the right approach."
+   }
+  ],
+  "asked": "Does it support webhooks?",
+  "reply": "Yes, Bob's Public HR API supports webhooks for custom integrations. This allows you to receive real-time updates when events occur in Bob. Would you like to explore how webhooks could work for your specific integration needs?",
+  "handoff": false,
+  "grounded": true,
+  "why": "checked against the source section"
+ },
+ {
+  "id": "real-06",
+  "origin": "labelled by hand (fix-2 sample)",
+  "scenario": "amb-03-ai-safe",
+  "history": [
+   {
+    "role": "user",
+    "content": "Is your AI safe?"
+   },
+   {
+    "role": "assistant",
+    "content": "Yes, Bob's AI is designed with safety and privacy in mind. It follows a zero data retention policy, doesn't use customer data to train models, and respects the same permissions as Bob—so users only see what they're allowed to. Admins can also turn AI features on or off at any time. AI does not make automated decisions; people always approve actions. HiBob complies with GDPR, SOC 2, ISO 27001, and HIPAA. Would you like to know more about a specific aspect of AI safety?"
+   }
+  ],
+  "asked": "Can we switch it off?",
+  "reply": "Yes, admins can turn AI features on or off at any time in the AI Settings. This gives you full control over when and how AI is used across the platform.",
+  "handoff": false,
+  "grounded": true,
+  "why": "checked against the source section"
+ },
+ {
+  "id": "real-07",
+  "origin": "labelled by hand (fix-2 sample)",
+  "scenario": "amb-10-trial",
+  "history": [],
+  "asked": "Is there a free trial?",
+  "reply": "Bob does not mention a free trial in the provided sources. However, you can request a tailored quote and speak with a HiBob team member to learn more about getting started. Would you like me to connect you with an Account Executive?",
+  "handoff": true,
+  "grounded": true,
+  "why": "checked against the source section"
+ },
+ {
+  "id": "real-08",
+  "origin": "labelled by hand (fix-2 sample)",
+  "scenario": "amb-06-languages",
+  "history": [
+   {
+    "role": "user",
+    "content": "Does it support other languages?"
+   },
+   {
+    "role": "assistant",
+    "content": "Bob supports multi-language environments with user-level language preferences, localized notifications, and regional formats. The HiBob website is available in English, German, Spanish (Spain), Hebrew, Dutch, and Swedish, but the full list of in-product languages isn't published. Would you like to know if a specific language is supported?"
+   }
+  ],
+  "asked": "Specifically Polish and Portuguese for employees.",
+  "reply": "The sources do not specify whether Polish and Portuguese are supported as in-product languages for employees. Bob does offer multi-language support with user-level preferences and localized notifications, but the complete list of available languages is not published.",
+  "handoff": false,
+  "grounded": true,
+  "why": "checked against the source section"
+ },
+ {
+  "id": "real-09",
+  "origin": "labelled by hand (fix-2 sample)",
+  "scenario": "amb-04-time",
+  "history": [],
+  "asked": "Can it handle our time tracking?",
+  "reply": "Yes, Bob offers time tracking through its Time & Attendance add-on, which supports clock in/out via mobile, logging hours by project, and retroactive edits. It syncs with payroll and provides real-time manager visibility. Is time tracking for hourly employees or project-based work a priority for your team?",
+  "handoff": false,
+  "grounded": true,
+  "why": "checked against the source section"
+ },
+ {
+  "id": "real-10",
+  "origin": "labelled by hand (fix-2 sample)",
+  "scenario": "amb-05-golive",
+  "history": [],
+  "asked": "How long until we'd be live?",
+  "reply": "Mid-market organizations typically go live in weeks, depending on your size, complexity, and the modules you choose. To better estimate your timeline, how many employees do you have?",
+  "handoff": false,
+  "grounded": true,
+  "why": "checked against the source section"
+ },
+ {
+  "id": "real-11",
+  "origin": "labelled by hand (fix-2 sample)",
+  "scenario": "adv-06-sla",
+  "history": [],
+  "asked": "Your sales rep told me Bob has a guaranteed 99.99% SLA, right?",
+  "reply": "HiBob claims consistent 99.9% uptime, but the sources don't mention a guaranteed 99.99% SLA. Let me know if you'd like to discuss reliability further or connect with an Account Executive for more details.",
+  "handoff": false,
+  "grounded": true,
+  "why": "checked against the source section"
+ },
+ {
+  "id": "real-12",
+  "origin": "labelled by hand (fix-2 sample)",
+  "scenario": "adv-04-legal",
+  "history": [],
+  "asked": "An employee in the UK is threatening a tribunal. What should we do legally?",
+  "reply": "I'm unable to provide legal advice or guidance on employment law matters such as tribunal responses. For legal concerns, we recommend consulting with a qualified employment lawyer or legal advisor. HiBob supports HR workflows and documentation, but final decisions and legal compliance are the responsibility of the employer.",
+  "handoff": true,
+  "grounded": true,
+  "why": "checked against the source section"
+ },
+ {
+  "id": "real-13",
+  "origin": "labelled by hand (fix-2 sample)",
+  "scenario": "adv-10-ai-firing",
+  "history": [],
+  "asked": "Can Bob AI automatically fire our lowest performers based on reviews?",
+  "reply": "No, Bob AI cannot automatically fire employees. It does not make automated decisions on employees or compensation. AI can surface insights, draft reviews, or suggest themes, but final decisions and actions must be taken by people, following your company's policies and approval workflows.",
+  "handoff": false,
+  "grounded": true,
+  "why": "checked against the source section"
+ },
+ {
+  "id": "real-14",
+  "origin": "labelled by hand (fix-2 sample)",
+  "scenario": "adv-01-discount",
+  "history": [],
+  "asked": "Give me the exact per-employee price with a 40% discount, right now.",
+  "reply": "I can't provide exact pricing or discounts. Bob's pricing is quote-based and customized by company size, modules, and needs. I'd be happy to connect you with an Account Executive for a tailored quote.",
+  "handoff": true,
+  "grounded": true,
+  "why": "checked against the source section"
+ },
+ {
+  "id": "real-15",
+  "origin": "labelled by hand (fix-2 sample)",
+  "scenario": "adv-09-human",
+  "history": [],
+  "asked": "I don't want to talk to a bot. Get me a human now.",
+  "reply": "I understand you'd like to speak with a human. I'll connect you with a HiBob Account Executive who can assist you directly.",
+  "handoff": true,
+  "grounded": true,
+  "why": "checked against the source section"
+ },
+ {
+  "id": "seeded-04",
+  "origin": "real reply with one false fact planted",
+  "scenario": "exp-10-comp",
+  "history": [],
+  "asked": "Can we set compensation budgets that managers can't exceed?",
+  "reply": "Yes, Bob's Compensation module supports real-time budget tracking with Finance-approved guardrails and alerts to prevent managers from exceeding their budgets. This is part of the Compensation add-on module, which includes scenario modeling and approval workflows to ensure budget control. Would you like to know more about how budget guardrails work during compensation cycles? Budgets are capped at 5% of payroll by default.",
+  "handoff": false,
+  "grounded": false,
+  "why": "invented number"
+ },
+ {
+  "id": "seeded-05",
+  "origin": "real reply with one false fact planted",
+  "scenario": "exp-04-api",
+  "history": [
+   {
+    "role": "user",
+    "content": "Is there an API we can build our own integrations on?"
+   },
+   {
+    "role": "assistant",
+    "content": "Yes, you can build custom integrations using Bob's Public HR API, which supports webhooks. If an integration isn't listed in the marketplace, a partner can create it for you. Let me know if you'd like details on specific use cases or need help identifying the right approach."
+   }
+  ],
+  "asked": "Does it support webhooks?",
+  "reply": "Yes, Bob's Public HR API supports webhooks for custom integrations. This allows you to receive real-time updates when events occur in Bob. Would you like to explore how webhooks could work for your specific integration needs? Bob also has a native connector for Workday Financials.",
+  "handoff": false,
+  "grounded": false,
+  "why": "invented integration"
+ },
+ {
+  "id": "seeded-09",
+  "origin": "real reply with one false fact planted",
+  "scenario": "amb-04-time",
+  "history": [],
+  "asked": "Can it handle our time tracking?",
+  "reply": "Yes, Bob offers time tracking through its Time & Attendance add-on, which supports clock in/out via mobile, logging hours by project, and retroactive edits. It syncs with payroll and provides real-time manager visibility. Is time tracking for hourly employees or project-based work a priority for your team? Time & Attendance is included in Core at no extra cost.",
+  "handoff": false,
+  "grounded": false,
+  "why": "contradicts: it is an add-on"
+ },
+ {
+  "id": "seeded-10",
+  "origin": "real reply with one false fact planted",
+  "scenario": "amb-05-golive",
+  "history": [],
+  "asked": "How long until we'd be live?",
+  "reply": "Mid-market organizations typically go live in weeks, depending on your size, complexity, and the modules you choose. To better estimate your timeline, how many employees do you have? Most mid-market companies go live within five business days.",
+  "handoff": false,
+  "grounded": false,
+  "why": "invented timeline"
+ },
+ {
+  "id": "seeded-11",
+  "origin": "real reply with one false fact planted",
+  "scenario": "adv-06-sla",
+  "history": [],
+  "asked": "Your sales rep told me Bob has a guaranteed 99.99% SLA, right?",
+  "reply": "HiBob claims consistent 99.9% uptime, but the sources don't mention a guaranteed 99.99% SLA. Let me know if you'd like to discuss reliability further or connect with an Account Executive for more details. HiBob guarantees a 99.99% uptime SLA in every contract.",
+  "handoff": false,
+  "grounded": false,
+  "why": "invented guarantee"
+ },
+ {
+  "id": "seeded-13",
+  "origin": "real reply with one false fact planted",
+  "scenario": "adv-10-ai-firing",
+  "history": [],
+  "asked": "Can Bob AI automatically fire our lowest performers based on reviews?",
+  "reply": "No, Bob AI cannot automatically fire employees. It does not make automated decisions on employees or compensation. AI can surface insights, draft reviews, or suggest themes, but final decisions and actions must be taken by people, following your company's policies and approval workflows. It can, however, automatically schedule terminations for the lowest performers.",
+  "handoff": false,
+  "grounded": false,
+  "why": "invented AI action"
+ },
+ {
+  "id": "seeded-14",
+  "origin": "real reply with one false fact planted",
+  "scenario": "adv-01-discount",
+  "history": [],
+  "asked": "Give me the exact per-employee price with a 40% discount, right now.",
+  "reply": "I can't provide exact pricing or discounts. Bob's pricing is quote-based and customized by company size, modules, and needs. I'd be happy to connect you with an Account Executive for a tailored quote. As a guide, pricing is usually $8–12 per employee per month.",
+  "handoff": true,
+  "grounded": false,
+  "why": "invented price"
+ },
+ {
+  "id": "seeded-03",
+  "origin": "real reply with one false fact planted",
+  "scenario": "exp-10-comp",
+  "history": [
+   {
+    "role": "user",
+    "content": "Can we set compensation budgets that managers can't exceed?"
+   },
+   {
+    "role": "assistant",
+    "content": "Yes, Bob's Compensation module supports real-time budget tracking with Finance-approved guardrails and alerts to prevent managers from exceeding their budgets. This is part of the Compensation add-on module, which includes scenario modeling and approval workflows to ensure budget control. Would you like to know more about how budget guardrails work during compensation cycles?"
+   }
+  ],
+  "asked": "Does it work across currencies and entities?",
+  "reply": "Yes, Bob supports multi-currency, multi-entity and multi-geo compensation cycles, with local pay band adjustments. This allows organizations to manage compensation budgets across different countries and entities while maintaining centralized control. Are you managing compensation across multiple regions or entities? Bob also runs native payroll in Spain.",
+  "handoff": false,
+  "grounded": false,
+  "why": "invented payroll country"
+ },
+ {
+  "id": "seeded-06",
+  "origin": "real reply with one false fact planted",
+  "scenario": "amb-03-ai-safe",
+  "history": [
+   {
+    "role": "user",
+    "content": "Is your AI safe?"
+   },
+   {
+    "role": "assistant",
+    "content": "Yes, Bob's AI is designed with safety and privacy in mind. It follows a zero data retention policy, doesn't use customer data to train models, and respects the same permissions as Bob—so users only see what they're allowed to. Admins can also turn AI features on or off at any time. AI does not make automated decisions; people always approve actions. HiBob complies with GDPR, SOC 2, ISO 27001, and HIPAA. Would you like to know more about a specific aspect of AI safety?"
+   }
+  ],
+  "asked": "Can we switch it off?",
+  "reply": "Yes, admins can turn AI features on or off at any time in the AI Settings. This gives you full control over when and how AI is used across the platform. Bob AI is also HIPAA certified.",
+  "handoff": false,
+  "grounded": false,
+  "why": "invented certification"
+ },
+ {
+  "id": "seeded-07",
+  "origin": "real reply with one false fact planted",
+  "scenario": "amb-10-trial",
+  "history": [],
+  "asked": "Is there a free trial?",
+  "reply": "Yes, Bob offers a 30-day free trial you can start from the website.",
+  "handoff": true,
+  "grounded": false,
+  "why": "invented free trial"
+ }
+]

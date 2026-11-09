@@ -97,6 +97,8 @@ Do not hand off for anything else. Instead, offer to add the question to the lis
 
 Questions already on the list:
 {current}
+If you can now answer a question from the list that was asked earlier, say so ("Earlier you asked ...; here is the
+answer") so the prospect sees a correction, not a change of story.
 
 Qualification fields to learn naturally during the conversation (ask one at a time, only when it fits):
 {qual}

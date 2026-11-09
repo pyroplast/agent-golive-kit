@@ -131,11 +131,15 @@ def test_call_judge_prompt_excludes_disagreeing_with_the_buyer():
 def test_a_contradiction_inside_one_turn_is_dropped(chunks):
     class L:
         def complete(self, role, system, messages, meta=None):
-            return LLMResponse(json.dumps({"contradictions": [{"turns": [5, 5], "detail": "x"},
-                                                              {"turns": [6, 14], "detail": "y"}]}), 1, 1, "l")
-    turn = {"n": 1, "user": "q", "agent": {"reply": "a"}}
-    out = CallJudge(L()).score({"profile": {}}, [turn])
-    assert out["contradictions"] == [{"turns": [6, 14], "detail": "y"}]
+            ev = [{"turn": 6, "quote": "hosted in Ireland"}, {"turn": 14, "quote": "hosted in Frankfurt"}]
+            one = [{"turn": 6, "quote": "hosted in Ireland"}, {"turn": 6, "quote": "Data is hosted"}]
+            return LLMResponse(json.dumps({"contradictions": [{"turns": [6, 6], "detail": "x", "evidence": one},
+                                                              {"turns": [6, 14], "detail": "y", "evidence": ev}]}),
+                               1, 1, "l")
+    turns = [{"n": n, "user": "q", "agent": {"reply": r}} for n, r in
+             ((5, "a"), (6, "Data is hosted in Ireland."), (14, "Data is hosted in Frankfurt."))]
+    out = CallJudge(L()).score({"profile": {}}, turns)
+    assert [c["turns"] for c in out["contradictions"]] == [[6, 14]]
 
 
 # --- calls-fix-1 follow-ups ---------------------------------------------------------------------------------
@@ -229,6 +233,10 @@ def test_self_negating_contradiction_is_dropped(chunks):
             return LLMResponse(json.dumps({"contradictions": [
                 {"turns": [3, 9], "detail": "OKRs in 3, reviews in 9, which is not a direct contradiction. "
                                             "No actual contradiction found."},
-                {"turns": [6, 7], "detail": "hosted in 6, can't confirm in 7"}]}), 1, 1, "l")
-    out = CallJudge(L()).score({"profile": {}}, [{"n": 1, "user": "q", "agent": {"reply": "a"}}])
+                {"turns": [6, 7], "detail": "hosted in 6, can't confirm in 7",
+                 "evidence": [{"turn": 6, "quote": "hosted on AWS"}, {"turn": 7, "quote": "I can't confirm that"}]}]}),
+                1, 1, "l")
+    turns = [{"n": 6, "user": "q", "agent": {"reply": "Bob is hosted on AWS."}},
+             {"n": 7, "user": "q", "agent": {"reply": "I can't confirm that."}}]
+    out = CallJudge(L()).score({"profile": {}}, turns)
     assert [c["turns"] for c in out["contradictions"]] == [[6, 7]]
