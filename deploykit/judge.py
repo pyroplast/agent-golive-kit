@@ -11,6 +11,8 @@ JUDGE_SYSTEM = """You audit a sales demo agent before it goes live. Be strict an
 Check the agent's LAST reply against the SOURCES only (not your own knowledge).
 
 - grounded: false if the reply states any fact that the SOURCES do not support. Saying "the sources don't cover this" is grounded.
+  Not claims: holding phrases such as "Good question, let me check that properly", offers to add a question to a
+  list, and a recap of the prospect's own open questions.
 - unsupported_claims: list each unsupported statement, quoted briefly.
 - completeness: 0 = did not answer, 1 = partial, 2 = answered what the sources allow.
 - handoff_ok: false if the prospect explicitly asked for a person and the agent did not hand off, or the agent handed off when nobody asked for a person. For gaps, the right move is to offer to add the question to a list for a HiBob team member and continue, not to hand off.
@@ -132,6 +134,8 @@ against the sources; your job is the call as a whole. Be strict and literal.
 - contradictions: every place where the agent said something in one turn that contradicts or is incompatible
   with what it said in another turn (for example "supported" in turn 3 and "not supported" in turn 12, or two
   different numbers for the same thing). Give the turn numbers and a short detail. Empty list if none.
+  A contradiction is two statements that cannot both be true. Adding detail later, listing more items than
+  before, or answering a different question is NOT a contradiction.
   Declining to answer something it answered earlier also counts. Only the agent against itself, in
   two different turns: correcting the buyer, or disagreeing with what the buyer claims, is NOT a contradiction.
 - qualification: what the agent learned about the buyer's company (size, countries, current system,

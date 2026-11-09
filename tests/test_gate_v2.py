@@ -207,3 +207,54 @@ def test_cli_judgecheck_with_mock(capsys):
     from deploykit.cli import main
     assert main(["judgecheck", "--provider", "mock"]) == 0
     assert "planted errors caught" in capsys.readouterr().out
+
+
+# --- calls-gate-2/3 follow-ups ---------------------------------------------------------------------------------
+
+def test_call_judge_is_told_that_adding_detail_is_not_a_contradiction():
+    p = CALL_JUDGE_SYSTEM.lower()
+    assert "adding detail" in p and "cannot both be true" in p
+
+
+def test_turn_judge_is_told_filler_and_recaps_are_not_claims():
+    from deploykit.judge import JUDGE_SYSTEM
+    p = JUDGE_SYSTEM.lower()
+    assert "let me check" in p and "recap" in p
+
+
+def test_wrap_up_is_written_by_code_from_the_question_list(config, chunks):
+    from tests.test_call_fixes import SeqLLM
+    from deploykit.agent import DemoAgent
+    llm = SeqLLM([])
+    agent = DemoAgent(config, chunks, llm, approved=APPROVED)
+    t = agent.respond([{"role": "user", "content": "Thanks for the info. I need to wrap up, what's the next step?"}],
+                      "en", parked=["Can you host in the US?", "Do you integrate with Workday?"], floor="high")
+    assert llm.agent_calls == []
+    assert "Can you host in the US?" in t["reply"] and "Do you integrate with Workday?" in t["reply"]
+    assert "team member" in t["reply"] and t["tier"] == "low" and not t["handoff"] and t["park"] is None
+    assert t["citations"] == [] and t["wrap_up"] is True
+
+
+def test_wrap_up_with_an_empty_list(config, chunks):
+    from tests.test_call_fixes import SeqLLM
+    from deploykit.agent import DemoAgent
+    t = DemoAgent(config, chunks, SeqLLM([])).respond(
+        [{"role": "user", "content": "I'm out of time, thanks for your time."}], "en", parked=[])
+    assert t["wrap_up"] is True and "list" not in t["reply"].lower()
+
+
+def test_mid_call_next_steps_are_not_a_wrap_up(config, chunks):
+    from deploykit.agent import is_wrap_up
+    assert not is_wrap_up("What are the next steps to implement payroll?")
+    assert not is_wrap_up("Who would help us with the implementation?")
+    assert is_wrap_up("Thanks, I have to jump. What happens next?")
+    assert is_wrap_up("Thanks for the info. I need to wrap up — what’s the next step?")
+
+
+def test_live_agent_uses_the_same_wrap_up(config, chunks):
+    from tests.test_live import Clock, StreamLLM, live
+    clock = Clock()
+    llm = StreamLLM([], clock)
+    t = live(config, chunks, llm, clock).respond(
+        [{"role": "user", "content": "OK, let's wrap up. What happens next?"}], "en", parked=["Exact price?"])
+    assert llm.roles == [] and "Exact price?" in t["reply"] and t["timing"]["first_words_s"] == 0

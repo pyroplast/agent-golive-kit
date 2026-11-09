@@ -58,6 +58,31 @@ def offers_list(reply: str) -> bool:
     return bool(_OFFER.search(reply or ""))
 
 
+_WRAP_UP = re.compile(r"\b(?:wrap(?:ping)? (?:this |things |it )?up|out of time|(?:have|need|got) to (?:go|run|jump|drop)|"
+                      r"that['’]s all|thanks for (?:your|the) time|before we finish|let['’]s (?:finish|stop) here|"
+                      r"what happens next)\b", re.I)
+
+
+def is_wrap_up(text: str) -> bool:
+    """The prospect is ending the call (not asking about next steps of a project mid-call)."""
+    return bool(_WRAP_UP.search(text or ""))
+
+
+def wrap_up_turn(parked: list[str]) -> dict:
+    """The closing reply, written by code: a recap of the question list and who follows up. No model call, so
+    nothing new can be claimed at the end (calls-gate-2/3: the wrap-up inherited the high-risk level)."""
+    if parked:
+        items = " ".join(f"({i}) {q}" for i, q in enumerate(parked, 1))
+        reply = (f"Thanks for your time. Before we finish, these are the open questions I've added to the list: "
+                 f"{items}. A HiBob team member will follow up on them with you.")
+    else:
+        reply = "Thanks for your time. If anything else comes up, just ask here and I'll help."
+    return {"reply": reply, "kind": "clarify", "claims": [], "citations": [], "invalid_citations": [],
+            "handoff": False, "handoff_reason": None, "unknown": False, "park": None, "qualification": {},
+            "parse_error": False, "tier": "low", "own_tier": "low", "wrap_up": True,
+            "guard": {"enabled": True, "retried": False, "fell_back": False, "composed": False}}
+
+
 def asks_for_human(text: str) -> bool:
     """Explicit request for a person. Deliberately ignores HR vocabulary like 'human resources'."""
     return any(p.search(text) for p in _HUMAN)
@@ -174,8 +199,13 @@ class DemoAgent:
 
     def respond(self, history: list[dict], lang: str, parked: list[str] | None = None,
                 floor: str | None = None, ledger: list[dict] | None = None) -> dict:
-        turn = self._respond(history, lang, parked or [], floor, ledger or [])
         last = history[-1]["content"] if history and history[-1]["role"] == "user" else ""
+        if is_wrap_up(last) and not asks_for_human(last):
+            turn = wrap_up_turn(list(parked or []))
+            turn["timing"] = {"streamed": False, "filler": False, "first_words_s": 0, "first_sentence_s": 0,
+                              "total_s": 0}
+            return turn
+        turn = self._respond(history, lang, parked or [], floor, ledger or [])
         if turn.get("handoff") and not asks_for_human(last):
             # Only an explicit request for a person ends in a handoff (calls-baseline: "What happens next?" did).
             turn.update(handoff=False, handoff_reason=None)
