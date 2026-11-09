@@ -68,6 +68,14 @@ def is_wrap_up(text: str) -> bool:
     return bool(_WRAP_UP.search(text or ""))
 
 
+def carried_tier(policy, question: str, floor: str | None) -> str:
+    """The risk level a question is held to. A level carried from the turn before applies only to a follow-up
+    that has no risk topic of its own ("send me that report"); a new topic is judged on its own (calls-gate-4:
+    an integrations question after a 2FA question was held to approved security sentences)."""
+    own = policy.question_tier(question)
+    return max_tier(floor or "low", own) if own == "low" else own
+
+
 def wrap_up_turn(parked: list[str]) -> dict:
     """The closing reply, written by code: a recap of the question list and who follows up. No model call, so
     nothing new can be claimed at the end (calls-gate-2/3: the wrap-up inherited the high-risk level)."""
@@ -282,7 +290,7 @@ class DemoAgent:
                  ledger: list[dict] | None = None) -> dict:
         sources = self.sources_for(history)
         last_q = history[-1]["content"] if history and history[-1]["role"] == "user" else ""
-        pre_tier = max_tier(floor or "low", self.policy.question_tier(last_q)) if self.policy else None
+        pre_tier = carried_tier(self.policy, last_q, floor) if self.policy else None
         system = self._system(sources, parked, pre_tier, last_q, ledger)
         # Replay the agent's own earlier turns in the JSON shape it must keep producing.
         # With plain-text history the model drifted out of the format on follow-up turns.

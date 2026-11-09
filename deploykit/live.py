@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import time
 
-from deploykit.agent import OUTPUT_SPEC, DemoAgent
+from deploykit.agent import OUTPUT_SPEC, DemoAgent, carried_tier
 from deploykit.guard import approved_sources
 from deploykit.risk import max_tier
 
@@ -53,7 +53,7 @@ class LiveAgent(DemoAgent):
         sources = self.sources_for(history)
         last_q = history[-1]["content"] if history and history[-1]["role"] == "user" else ""
         user_text = " ".join(m["content"] for m in history if m["role"] == "user")
-        pre_tier = max_tier(floor or "low", self.policy.question_tier(last_q)) if self.policy else None
+        pre_tier = carried_tier(self.policy, last_q, floor) if self.policy else None
         role = "agent_fast" if self.fast and pre_tier in (None, "low") else "agent"
         system = self._system(sources, parked, pre_tier, last_q, ledger).replace(OUTPUT_SPEC, LIVE_SPEC)
         # The agent never sees its own filler lines, or it starts copying them (calls-live-1 turn 6 said it twice).

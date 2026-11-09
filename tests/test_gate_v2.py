@@ -258,3 +258,44 @@ def test_live_agent_uses_the_same_wrap_up(config, chunks):
     t = live(config, chunks, llm, clock).respond(
         [{"role": "user", "content": "OK, let's wrap up. What happens next?"}], "en", parked=["Exact price?"])
     assert llm.roles == [] and "Exact price?" in t["reply"] and t["timing"]["first_words_s"] == 0
+
+
+# --- calls-gate-4/5/6 follow-ups -------------------------------------------------------------------------------
+
+def test_a_carried_risk_level_applies_only_to_a_follow_up_without_its_own_topic(config, chunks):
+    from deploykit.agent import carried_tier
+    from deploykit.risk import RiskPolicy
+    p = RiskPolicy(config["risk"], APPROVED)
+    assert carried_tier(p, "Great, can you send me that report now?", "high") == "high"   # follow-up
+    assert carried_tier(p, "Can we switch it off?", "high") == "high"
+    # helix T12: a new topic with its own (medium) risk is judged on its own
+    assert carried_tier(p, "Does it integrate with our stack? We use Jira, Slack and Workday Financials.", "high") == "medium"
+    assert carried_tier(p, "Where is our data hosted?", None) == "high"
+
+
+def test_two_client_approved_sentences_cannot_contradict_each_other():
+    certs = next(a for a in APPROVED if a["id"] == "sec-certs")["text"]
+    comp = next(a for a in APPROVED if a["id"] == "sec-compliance")["text"]
+    turns = [turn(1, certs), turn(4, comp)]
+    ev = [{"turn": 1, "quote": certs.split(". ")[0]}, {"turn": 4, "quote": comp.split(". ")[0]}]
+    out = CallJudge(Fixed({"contradictions": [{"turns": [1, 4], "detail": "x", "evidence": ev}]}),
+                    approved=APPROVED).score({"profile": {}}, turns)
+    assert out["contradictions"] == [] and out["dropped"][0]["why"] == "both quotes are client-approved text"
+
+
+def test_an_approved_sentence_against_a_free_sentence_still_counts():
+    certs = next(a for a in APPROVED if a["id"] == "sec-certs")["text"]
+    turns = [turn(1, certs), turn(4, "HiBob has no ISO certification.")]
+    ev = [{"turn": 1, "quote": certs.split(". ")[0]}, {"turn": 4, "quote": "HiBob has no ISO certification"}]
+    out = CallJudge(Fixed({"contradictions": [{"turns": [1, 4], "detail": "x", "evidence": ev}]}),
+                    approved=APPROVED).score({"profile": {}}, turns)
+    assert len(out["contradictions"]) == 1
+
+
+def test_contract_terms_have_a_draft_approved_answer():
+    a = next(a for a in APPROVED if a["id"] == "contract-terms")
+    assert "pending client approval" in a["status"] and a["sources"] == ["pricing#1"]
+    from deploykit.risk import RiskPolicy
+    import json as _j
+    cfg = _j.loads((ROOT / "config" / "client.json").read_text())
+    assert RiskPolicy(cfg["risk"], APPROVED).matching("What contract length does HiBob usually ask for?") == ["contract-terms"]

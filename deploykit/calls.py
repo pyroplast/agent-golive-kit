@@ -192,7 +192,7 @@ def run_calls(config, chunks, calls, llm, out_dir="runs", name=None, prices=None
         else:
             agent = DemoAgent(config, chunks, tracked, retrieval=retrieval, guard=guard, approved=approved)
         return run_call(call, agent, Judge(tracked, chunks), CallBuyer(tracked, config), tracked,
-                        call_judge=CallJudge(tracked), cost=tracker)
+                        call_judge=CallJudge(tracked, approved=approved), cost=tracker)
 
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
         rows = list(pool.map(one, calls))

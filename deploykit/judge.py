@@ -169,8 +169,10 @@ _NOT_A_CONTRADICTION = re.compile(r"\b(?:no|not an?|isn't an?|is not an?)\s+(?:a
 class CallJudge:
     """One verdict per call: consistency across turns, which a per-turn judge cannot see."""
 
-    def __init__(self, llm, chunks: list[Chunk] | None = None):
+    def __init__(self, llm, chunks: list[Chunk] | None = None, approved: list[dict] | None = None):
         self.llm = llm
+        # Client-approved answers are written to be consistent, so two quotes from them cannot contradict.
+        self.approved_norm = [_norm(a["text"]) for a in approved or []]
 
     def score(self, call: dict, turns: list[dict]) -> dict:
         p = call.get("profile", {})
@@ -189,7 +191,7 @@ class CallJudge:
         by_turn = {t["n"]: t for t in turns}
         kept, dropped = [], []
         for c in data["contradictions"]:
-            why = self._reject(c, by_turn)
+            why = self._reject(c, by_turn, self.approved_norm)
             if why:
                 dropped.append({**(c if isinstance(c, dict) else {"raw": c}), "why": why})
                 continue
@@ -201,7 +203,7 @@ class CallJudge:
                 "notes": str(data.get("notes", "")), "judge_error": False}
 
     @staticmethod
-    def _reject(c, by_turn) -> str | None:
+    def _reject(c, by_turn, approved_norm=()) -> str | None:
         """Why a reported contradiction does not stand, or None if it does: both quotes must be in the agent's
         own replies, in two different turns."""
         if not isinstance(c, dict):
@@ -218,4 +220,6 @@ class CallJudge:
             q = _norm(e.get("quote", ""))
             if t is None or not q or q not in _norm(t["agent"].get("reply", "")):
                 return f"quote not found in turn {e['turn']}"
+        if approved_norm and all(any(_norm(e["quote"]) in a for a in approved_norm) for e in ev):
+            return "both quotes are client-approved text"
         return None

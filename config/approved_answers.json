@@ -163,5 +163,23 @@
       "employment law",
       "legal advice"
     ]
+  },
+  {
+    "id": "contract-terms",
+    "topic": "Contract terms",
+    "status": "draft, pending client approval",
+    "text": "Contract terms are agreed with HiBob's team as part of a quote, since pricing is quote-based and depends on company size, needs and modules. I can add your question to the list for a HiBob team member.",
+    "sources": [
+      "pricing#1"
+    ],
+    "triggers": [
+      "contract length",
+      "contract term",
+      "contract terms",
+      "contract duration",
+      "notice period",
+      "minimum term",
+      "how long is the contract"
+    ]
   }
 ]
