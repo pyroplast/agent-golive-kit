@@ -122,6 +122,65 @@ def cmd_calls(a):
     return 0
 
 
+def _chat_session(a):
+    from deploykit.chat import ChatSession
+    config = json.loads(Path(a.config).read_text())
+    llm, _ = _llm(a)
+    approved = json.loads(Path(a.approved).read_text()) if Path(a.approved).exists() else None
+    return ChatSession(config, load_kb(a.kb), llm, approved=approved, judge=a.judge)
+
+
+def cmd_chat(a):
+    """Talk to the agent in the terminal. /list shows the question list, /new starts a new call, /quit ends."""
+    s = _chat_session(a)
+    print("You are the buyer on a demo call with HiBob's sales agent. /list, /new, /judge, /quit")
+    while True:
+        try:
+            text = input("\nYOU: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            break
+        if text in ("/quit", "/exit"):
+            break
+        if text == "/new":
+            s.reset()
+            print("(new call)")
+            continue
+        if text == "/judge":
+            s.judge = not s.judge
+            print(f"(judge {'on' if s.judge else 'off'})")
+            continue
+        if text == "/list":
+            print("Question list for the HiBob team:" + ("".join(f"\n  {i}. {q}" for i, q in enumerate(s.parked, 1))
+                                                       or " empty"))
+            continue
+        if not text:
+            continue
+        print("AGENT: ", end="", flush=True)
+
+        def show(e):
+            if e["type"] in ("say", "filler"):
+                print(e["text"], end=" ", flush=True)
+        t = s.ask(text, on_event=show)
+        tm, g = t.get("timing") or {}, t.get("guard") or {}
+        how = ("wrap-up by code" if t.get("wrap_up") else "slow path" if g.get("slow_path") else
+               f"approved answer {g['approved_substitute']}" if g.get("approved_substitute") else
+               f"{g.get('skipped')} sentence(s) dropped" if g.get("skipped") else "all sentences passed")
+        print(f"\n   [tier {t.get('tier')} · first words {tm.get('first_words_s', 0):.1f}s · done "
+              f"{tm.get('total_s', 0):.1f}s · {how} · cites {', '.join(t.get('citations', [])) or 'none'}"
+              f"{' · added to list' if t.get('park') else ''}{' · HANDED OFF' if t.get('handoff') else ''}]")
+        if t.get("judge"):
+            print(f"   [judge: grounded={t['judge'].get('grounded')} {t['judge'].get('unsupported_claims') or ''}]")
+        if s.ended:
+            print("(The call was handed to a person. /new to start again.)")
+    return 0
+
+
+def cmd_serve(a):
+    from deploykit.chat import ChatApp, serve
+    serve(ChatApp(_chat_session(a)), port=a.port)
+    return 0
+
+
 def cmd_review(a):
     """A person's decision on a gate-blocking finding, kept in the repo next to the code it judged."""
     folder = Path(a.dir)
@@ -312,6 +371,18 @@ def build_parser():
     c.add_argument("--no-tiers", action="store_true")
     c.add_argument("--approved", default=str(ROOT / "config" / "approved_answers.json"))
     c.set_defaults(fn=cmd_calls)
+
+    for name, fn, helptext in (("chat", cmd_chat, "talk to the agent in the terminal"),
+                               ("serve", cmd_serve, "talk to the agent in a local web page")):
+        cp = sub.add_parser(name, help=helptext)
+        cp.add_argument("--provider", choices=["mock", "anthropic", "bedrock", "nebius"], default="nebius")
+        cp.add_argument("--judge", action="store_true", help="also judge each reply (DeepSeek-V4-Pro, ~$0.002 each)")
+        cp.add_argument("--port", type=int, default=8765)
+        cp.add_argument("--kb", default=str(ROOT / "kb"))
+        cp.add_argument("--config", default=str(ROOT / "config" / "client.json"))
+        cp.add_argument("--models", default=str(ROOT / "config" / "models.json"))
+        cp.add_argument("--approved", default=str(ROOT / "config" / "approved_answers.json"))
+        cp.set_defaults(fn=fn)
 
     rv = sub.add_parser("review", help="record a person's decision on a gate-blocking finding")
     rv.add_argument("--name", required=True, help="run name")

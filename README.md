@@ -209,11 +209,25 @@ Times are measured from GitHub's US runners to Nebius in Europe, so they include
 writes sentences instead of picking approved ones, and the slow path can park a question that a later turn
 answers, which the call judge counts as a contradiction.
 
+## Try it yourself
+
+Be the buyer: type questions and watch the replies stream in, with what happened under the hood for each one
+(risk level, timing, what the guard blocked, the sources quoted, the question list).
+
+```bash
+export NEBIUS_API_KEY=...          # your own key; it never leaves your machine
+python -m deploykit serve          # then open http://localhost:8765
+python -m deploykit chat           # or the same in the terminal (/list, /new, /judge, /quit)
+```
+
+Add `--judge` to have DeepSeek-V4-Pro grade each reply (about $0.002 a reply), or `--provider mock` to try the page
+with no key (canned answers).
+
 ## Run it
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest -q                                   # 281 tests, no keys needed
+python -m pytest -q                                   # 292 tests, no keys needed
 python -m deploykit run --provider mock --name demo   # plumbing check, scores are meaningless
 ```
 
@@ -259,7 +273,7 @@ suite/calls.json         5 demo calls of 15 beats, built from the scenarios plus
 deploykit/               agent, guard, risk, judge, simulator, runner, calls, report, CLI, nightly job
 infra/                   AWS CDK stacks
 scripts/plot_runs.py     run-history chart
-tests/                   281 tests, written before the code they cover
+tests/                   292 tests, written before the code they cover
 ```
 
 ## Known limits

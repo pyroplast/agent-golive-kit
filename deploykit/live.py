@@ -15,6 +15,7 @@ In this text simulation "said" means: the time the sentence was ready, measured 
 from __future__ import annotations
 
 import json
+import threading
 import time
 
 from deploykit.agent import OUTPUT_SPEC, DemoAgent, carried_tier
@@ -47,6 +48,11 @@ class LiveAgent(DemoAgent):
     def __init__(self, *args, fast: bool = True, clock=time.perf_counter, **kwargs):
         super().__init__(*args, **kwargs)
         self.fast, self.clock = fast, clock
+        self.on_event = None  # optional listener: gets each sentence the moment it may be said (chat UI)
+
+    def _emit(self, kind, text, t0):
+        if self.on_event:
+            self.on_event({"type": kind, "text": text, "t": round(self.clock() - t0, 3)})
 
     def _respond(self, history, lang, parked, floor=None, ledger=None):
         t0 = self.clock()
@@ -67,9 +73,19 @@ class LiveAgent(DemoAgent):
         skip_at = None  # where the first dropped sentence would have been said
         buf, stop = "", False
         first_skip_s = [None]
+        substitute = []
+        filler_sent = threading.Event()
+        timer = None
+        if self.on_event:  # in a live chat the filler goes out at the threshold, while the model is still working
+            def _filler():
+                if first_at is None and not filler_sent.is_set():
+                    filler_sent.set()
+                    self._emit("filler", FILLER, t0)
+            timer = threading.Timer(FILLER_AFTER_S, _filler)
+            timer.start()
 
         def handle(line):
-            nonlocal tier, first_at, problems, failed, skipped, end, skip_at
+            nonlocal tier, first_at, problems, failed, skipped, end, skip_at, substitute
             line = line.strip().strip("`")
             if not line:
                 return False
@@ -85,6 +101,7 @@ class LiveAgent(DemoAgent):
             if obj.get("approved") and self.policy and obj["approved"] in self.policy.units:
                 u = self.policy.units[obj["approved"]]
                 said.append(u["text"])
+                self._emit("say", u["text"], t0)
                 approved_cites.extend(s for s in u["sources"] if s in self.ids)
                 tier = max_tier(tier or "low", "high")
                 first_at = first_at if first_at is not None else self.clock() - t0
@@ -99,11 +116,25 @@ class LiveAgent(DemoAgent):
             found = self._check(mini, user_text, s_tier)
             if found:  # drop this sentence, keep streaming the rest
                 problems, failed = problems + found, failed or say
-                skipped += 1
                 if skip_at is None:
                     skip_at, first_skip_s[0] = len(said), self.clock() - t0
+                # The question matches a client-approved answer: say that instead, right now (calls-live-3: AI
+                # questions were parked at turns 3-4, then answered at turn 5).
+                match = self.policy.matching(last_q) if self.policy and not substitute else []
+                if 1 <= len(match) <= 2:
+                    substitute = match
+                    texts = {a["id"]: a for a in self.policy.approved}
+                    for m in match:
+                        said.append(texts[m]["text"])
+                        self._emit("say", texts[m]["text"], t0)
+                        approved_cites.extend(s for s in texts[m].get("sources", []) if s in self.ids)
+                    tier = max_tier(tier or "low", "high")
+                    first_at = first_at if first_at is not None else self.clock() - t0
+                elif not substitute:
+                    skipped += 1
                 return False
             said.append(say)
+            self._emit("say", say, t0)
             claims.extend(c)
             tier = max_tier(tier or "low", s_tier) if s_tier else tier
             first_at = first_at if first_at is not None else self.clock() - t0
@@ -119,23 +150,16 @@ class LiveAgent(DemoAgent):
         if not stop and buf.strip():
             stop = handle(buf)
 
-        # Dropped sentences on a question that matches a client-approved answer: say the approved answer instead
-        # of parking (calls-live-3: AI questions parked at turns 3-4, then answered at turn 5).
-        substitute = self.policy.matching(last_q) if (skipped and self.policy) else []
-        if substitute and len(substitute) <= 2:
-            texts = {a["id"]: a for a in self.policy.approved}
-            said[skip_at:skip_at] = [texts[m]["text"] for m in substitute]
-            approved_cites.extend(s for m in substitute for s in texts[m].get("sources", []) if s in self.ids)
-            tier = max_tier(tier or "low", "high")
-            if first_at is None or skip_at == 0:
-                first_at = first_skip_s[0] if first_at is None else min(first_at, first_skip_s[0])
-            skipped = 0
-        else:
-            substitute = []
+        if timer:
+            timer.cancel()
 
         if not said:  # the first sentence failed, or nothing usable came back: slow path behind a filler
             filler_at = min(self.clock() - t0, FILLER_AFTER_S)
+            if not filler_sent.is_set():
+                filler_sent.set()
+                self._emit("filler", FILLER, t0)
             turn = DemoAgent._respond(self, history, lang, parked, floor, ledger)
+            self._emit("say", turn["reply"], t0)
             turn["reply"] = f"{FILLER} {turn['reply']}"
             turn["guard"] = {**turn.get("guard", {}), "streamed": True, "slow_path": True, "skipped": skipped,
                              "stream_problems": problems, "blocked_sentence": failed}
@@ -149,6 +173,7 @@ class LiveAgent(DemoAgent):
         if skipped:
             reply = f"{reply} {SAFE_TAIL}"
             park = last_q or None
+            self._emit("say", SAFE_TAIL, t0)
         filler = first_at > FILLER_AFTER_S
         if filler:
             reply = f"{FILLER} {reply}"
