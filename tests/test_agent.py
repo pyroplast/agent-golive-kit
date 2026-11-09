@@ -149,10 +149,10 @@ def test_agent_prompt_asks_for_quoted_claims(config, chunks):
 
 def test_guard_treats_malformed_output_as_a_failure(config, chunks):
     llm = SeqLLM("I am not JSON", "still not JSON")
-    turn = DemoAgent(config, chunks, llm).respond([{"role": "user", "content": "x"}], lang="en")
+    turn = DemoAgent(config, chunks, llm).respond([{"role": "user", "content": "Is there a free trial?"}], lang="en")
     assert len(llm.calls) == 2 and turn["guard"]["fell_back"] is True
     assert turn["guard"]["first_problems"][0]["type"] == "parse_error"
-    assert turn["park"] == "x" and turn["parse_error"] is False
+    assert turn["park"] == "Is there a free trial?" and turn["parse_error"] is False
 
 
 def test_guard_keeps_the_blocked_draft_for_diagnosis(config, chunks):

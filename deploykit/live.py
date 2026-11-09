@@ -18,7 +18,7 @@ import json
 import threading
 import time
 
-from deploykit.agent import OUTPUT_SPEC, DemoAgent, carried_tier
+from deploykit.agent import OUTPUT_SPEC, DemoAgent, carried_tier, is_question
 from deploykit.guard import approved_sources
 from deploykit.risk import max_tier
 
@@ -191,6 +191,10 @@ class LiveAgent(DemoAgent):
             first_at = self.clock() - t0
         reply = " ".join(said)
         park = end.get("park")
+        if skipped and not is_question(last_q):
+            skipped_silently, skipped = skipped, 0  # an introduction: the blocked sentence is simply left out
+        else:
+            skipped_silently = 0
         if skipped:
             reply = f"{reply} {SAFE_TAIL}".strip()
             park = last_q or None
@@ -210,12 +214,12 @@ class LiveAgent(DemoAgent):
                 turn["citations"].append(s)
         turn["tier"] = tier
         turn["own_tier"] = (self.policy.classify(last_q, turn["citations"], turn["claims"]) if self.policy else None)
-        if turn.get("unknown") and not turn.get("park") and not turn.get("handoff"):
+        if turn.get("unknown") and not turn.get("park") and not turn.get("handoff") and is_question(last_q):
             turn["park"] = last_q or None
             turn["reply"] = (turn["reply"].rstrip() + " " + self.config.get("park_offer", "")).strip()
         total = self.clock() - t0
         turn["guard"] = {"enabled": True, "streamed": True, "retried": False, "fell_back": False, "composed": False,
-                         "slow_path": False, "skipped": skipped, "approved_substitute": substitute,
+                         "slow_path": False, "skipped": skipped + skipped_silently, "approved_substitute": substitute,
                          "first_problems": problems, "final_problems": [],
                          "blocked_draft": failed}
         turn["model_role"] = role

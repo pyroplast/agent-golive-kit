@@ -168,3 +168,33 @@ def test_suggested_questions_come_in_three_rows_by_complexity():
     assert rows == ["Basics", "From the material", "Tricky"]
     assert PAGE.index("What are we doing here?") < PAGE.index("Which security certifications") \
         < PAGE.index("Are you HIPAA certified?")
+
+
+# --- an introduction is not a question (Pavlo, 9 Nov) ------------------------------------------------------------
+
+INTRO = "Hi, I'm Alex, Head of People at Lumen Studios. We're 300 people in the UK and Spain and use spreadsheets today."
+
+
+def test_is_question():
+    from deploykit.agent import is_question
+    assert not is_question(INTRO) and not is_question("We use spreadsheets today.")
+    for q in ("Does Bob support OKRs?", "Tell me about payroll", "Can you send the SOC 2 report",
+              "how does onboarding work", "I'd like to know about hosting.", "Give me the exact price"):
+        assert is_question(q), q
+
+
+def test_a_blocked_sentence_after_an_introduction_is_just_left_out(config, chunks):
+    from tests.test_live import GOOD, Clock, StreamLLM, live
+    clock = Clock()
+    lines = [GOOD, {"claims": [], "say": "Bob supports 40 languages."},
+             {"claims": [], "say": "Which HR areas matter most to you?"}, {"end": True}]
+    t = live(CONFIG, chunks, StreamLLM(lines, clock), clock).respond([{"role": "user", "content": INTRO}], "en")
+    assert t["reply"] == "Bob's pricing is quote-based. Which HR areas matter most to you?"
+    assert t["park"] is None and "agenda" not in t["reply"] and t["guard"]["skipped"] == 1
+
+
+def test_the_safe_reply_after_an_introduction_does_not_park(config, chunks):
+    from tests.test_call_fixes import SeqLLM
+    bad = {"reply": "Bob is used by 40,000 companies.", "kind": "answer", "claims": []}
+    t = DemoAgent(CONFIG, chunks, SeqLLM([bad, bad])).respond([{"role": "user", "content": INTRO}], "en")
+    assert t["park"] is None and "agenda" not in t["reply"] and "40,000" not in t["reply"]

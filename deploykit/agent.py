@@ -63,6 +63,19 @@ _WRAP_UP = re.compile(r"\b(?:wrap(?:ping)? (?:this |things |it )?up|out of time|
                       r"what happens next)\b", re.I)
 
 
+_ASK = re.compile(r"\?|^\s*(?:can|could|would|will|do|does|did|is|are|was|were|have|has|should|may|what|how|which|"
+                  r"when|where|why|who|whom|whose)\b|\b(?:tell me|give me|show me|send me|explain|walk me through|"
+                  r"i['’]d like to know|i want to know|i wonder|let me know)\b", re.I | re.M)
+
+
+def is_question(text: str) -> bool:
+    """The buyer asked something (vs. an introduction or a statement). Only a question can go on the agenda."""
+    return bool(_ASK.search(text or ""))
+
+
+NOTED_REPLY = "Thanks, that's helpful context."
+
+
 def is_wrap_up(text: str) -> bool:
     """The prospect is ending the call (not asking about next steps of a project mid-call)."""
     return bool(_WRAP_UP.search(text or ""))
@@ -238,7 +251,7 @@ class DemoAgent:
         if turn.get("handoff") and not asks_for_human(last):
             # Only an explicit request for a person ends in a handoff (calls-baseline: "What happens next?" did).
             turn.update(handoff=False, handoff_reason=None)
-        if not turn.get("park") and not turn.get("handoff") and offers_list(turn.get("reply", "")):
+        if not turn.get("park") and not turn.get("handoff") and offers_list(turn.get("reply", "")) and is_question(last):
             # The reply offers the list, so the question goes on it, whatever the model put in "park".
             turn["park"] = last or None
         if asks_for_human(last):
@@ -353,11 +366,12 @@ class DemoAgent:
                 composed, turn = True, {**composed_turn, "tier": tier}
             elif final:
                 fell_back = True
-                turn = {**self._to_turn({}, False), "reply": FALLBACK_REPLY, "park": last_q or None, "tier": tier}
+                turn = {**self._to_turn({}, False), "reply": FALLBACK_REPLY if is_question(last_q) else NOTED_REPLY,
+                        "park": (last_q or None) if is_question(last_q) else None, "tier": tier}
         turn["own_tier"] = own_tier
         self._cite_approved(turn)
-        if turn.get("unknown") and not turn.get("park") and not turn.get("handoff"):
-            # No dead ends: if the model says it doesn't know and offers nothing, offer the list.
+        if turn.get("unknown") and not turn.get("park") and not turn.get("handoff") and is_question(last_q):
+            # No dead ends: if the model says it doesn't know and offers nothing, the question goes on the agenda.
             turn["park"] = last_q or None
             turn["reply"] = (turn["reply"].rstrip() + " " + self.config.get("park_offer", "")).strip()
         turn["guard"] = {"enabled": True, "retried": retried, "fell_back": fell_back, "composed": composed,
