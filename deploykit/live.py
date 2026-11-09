@@ -27,6 +27,33 @@ _REPEAT_ASK = re.compile(r"\b(?:repeat|again|remind|recap|summar|earlier you|you
 
 def _norm(s: str) -> str:
     return " ".join(re.sub(r"[^a-z0-9]+", " ", str(s).lower()).split())
+
+
+_STOP = set("a an the and or of to in on for with by is are be it its this that your you we our so as at from "
+            "can will all also".split())
+
+
+def _words(s: str) -> set[str]:
+    return {w for w in _norm(s).split() if w not in _STOP}
+
+
+def _same_quote(a: str, b: str) -> bool:
+    """Two quotes from one source overlap: one contains the other, or they share most of their words."""
+    a, b = _norm(a), _norm(b)
+    if not a or not b:
+        return False
+    if a in b or b in a:
+        return True
+    wa, wb = set(a.split()), set(b.split())
+    return len(wa & wb) / len(wa | wb) >= 0.5
+
+
+def _restates(say: str, earlier: list[str]) -> bool:
+    """A sentence mostly made of the words of something the agent already said (Pavlo, 9 Nov)."""
+    w = _words(say)
+    if len(w) < 5:
+        return False
+    return any(len(w & _words(e)) / len(w) >= 0.7 for e in earlier)
 from deploykit.guard import approved_sources
 from deploykit.risk import max_tier
 
@@ -83,7 +110,9 @@ class LiveAgent(DemoAgent):
         held = []  # questions to the prospect, said after the answer (and after a "can't confirm" line)
         # Facts already given in this call (source + quote). A sentence that only repeats them is left out, unless
         # the prospect asked to hear it again (Pavlo, 9 Nov: the OKR facts came back after the buyer answered).
-        given = {(f.get("source"), _norm(f.get("quote", ""))) for f in ledger or []}
+        given = [(f.get("source"), f.get("quote", "")) for f in ledger or []]
+        earlier = [x for m in history if m["role"] == "assistant"
+                   for x in re.split(r"(?<=[.!?])\s+", m["content"]) if x.strip()]
         allow_repeat = bool(_REPEAT_ASK.search(last_q))
         repeated = [0]
         tier, first_at, problems, failed, skipped = pre_tier, None, [], None, 0
@@ -127,8 +156,10 @@ class LiveAgent(DemoAgent):
             if not say:
                 return False
             c = [x for x in obj.get("claims") or [] if isinstance(x, dict)]
-            if c and given and not allow_repeat and all(
-                    (x.get("source"), _norm(x.get("quote", ""))) in given for x in c):
+            is_ask = say.rstrip().endswith("?")
+            old_fact = bool(c) and bool(given) and all(
+                any(x.get("source") == s and _same_quote(x.get("quote", ""), q) for s, q in given) for x in c)
+            if not allow_repeat and not is_ask and (old_fact or _restates(say, earlier)):
                 repeated[0] += 1
                 return False
             mini = self._to_turn({"reply": say, "claims": c, "kind": "answer" if c else "clarify"}, False)

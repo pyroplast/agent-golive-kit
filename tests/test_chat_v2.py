@@ -229,3 +229,48 @@ def test_prompt_says_to_acknowledge_an_answer_and_not_repeat_facts(config, chunk
     from deploykit.agent import build_system_prompt
     p = build_system_prompt(CONFIG, chunks).lower()
     assert "acknowledge" in p and "already told you" in p and "do not repeat facts" in p
+
+
+# --- off-course question re-pastes earlier facts (Pavlo, 9 Nov: "why do you care" → Core HR again) ---------------
+
+SEC_LEDGER = [{"turn": 1, "text": "Bob is ISO 27001 certified with SOC 2 Type II audits", "source": "security#1",
+               "quote": "ISO 27001 certified with SOC 2 Type II audits"}]
+EARLIER = "Bob is ISO 27001 certified with SOC 2 Type II audits, so your people data stays protected."
+
+
+def _off_course(chunks, lines, ledger=SEC_LEDGER):
+    from tests.test_live import Clock, StreamLLM, live
+    clock = Clock()
+    history = [{"role": "user", "content": "Is it secure?"}, {"role": "assistant", "content": EARLIER},
+               {"role": "user", "content": "why do you care"}]
+    return live(CONFIG, chunks, StreamLLM(lines + [{"end": True}], clock), clock).respond(history, "en", ledger=ledger)
+
+
+def test_a_reworded_fact_with_a_different_quote_span_is_still_a_repeat(config, chunks):
+    t = _off_course(chunks, [
+        {"claims": [], "say": "Good question, fair enough."},
+        {"claims": [{"text": "ISO 27001 certified", "source": "security#1", "quote": "ISO 27001 certified"}],
+         "say": "Bob is ISO 27001 certified."}])
+    assert t["reply"] == "Good question, fair enough."
+    assert t["guard"]["repeated"] == 1
+
+
+def test_a_sentence_that_restates_an_earlier_reply_is_dropped_even_without_claims(config, chunks):
+    t = _off_course(chunks, [
+        {"claims": [], "say": "Good question, fair enough."},
+        {"claims": [], "say": "Bob is ISO 27001 certified with SOC 2 Type II audits, so people data stays protected."}])
+    assert t["reply"] == "Good question, fair enough."
+
+
+def test_a_new_fact_from_the_same_source_still_gets_through(config, chunks):
+    t = _off_course(chunks, [
+        {"claims": [{"text": "The SOC 2 report is available under NDA", "source": "security#1",
+                     "quote": "The SOC 2 report is available under NDA"}],
+         "say": "The SOC 2 report is available under NDA."}])
+    assert "under NDA" in t["reply"] and t["guard"]["repeated"] == 0
+
+
+def test_prompt_forbids_restating_earlier_facts_when_answering_something_else(config, chunks):
+    from deploykit.agent import DemoAgent
+    p = DemoAgent(CONFIG, chunks, MockLLM())._system(chunks, [], None, "why do you care", SEC_LEDGER)
+    assert "Never restate them" in p

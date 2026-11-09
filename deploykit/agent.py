@@ -356,7 +356,8 @@ class DemoAgent:
                               for f in ledger[-30:])
             system += ("\n\nFACTS YOU ALREADY GAVE IN THIS CALL. When the prospect asks you to repeat, summarise or "
                        "build on an earlier answer, reuse these claims with the same source and quote, and do not "
-                       "contradict them:\n" + facts)
+                       "contradict them. Never restate them when the prospect asks about something else, even to "
+                       "add context:\n" + facts)
         if self._guide:
             from deploykit.demo_plan import prompt_block
             system += "\n\n" + prompt_block(self._guide)
