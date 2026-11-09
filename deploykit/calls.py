@@ -19,7 +19,8 @@ from pathlib import Path
 
 import copy
 
-from deploykit.agent import DemoAgent, asks_for_human, fixed_answer, is_question, is_small_talk, is_wrap_up
+from deploykit.agent import (DemoAgent, asks_for_human, fixed_answer, is_question, is_small_talk, is_wrap_up,
+                             unfixed_part)
 from deploykit.judge import CallJudge, Judge, session_verdict
 from deploykit.llm import CostTracker, TrackedLLM
 from deploykit.risk import max_tier
@@ -105,7 +106,7 @@ class RepeatTracker:
 
     def key(self, text: str):
         f = fixed_answer(self.config, text)
-        if f:
+        if f and not unfixed_part(self.config, text):  # a two-part question is its own question
             return ("fixed", f["id"])
         return frozenset(w for w in re.findall(r"[a-z0-9]+", (text or "").lower()) if w not in _STOP and len(w) > 1)
 

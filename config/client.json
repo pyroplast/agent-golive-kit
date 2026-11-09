@@ -219,7 +219,20 @@
         "\\b(?:discount|discounts|ballpark|quote)\\b",
         "\\bper (?:employee|user|seat|head|month)\\b",
         "\\b(?:cheaper|more expensive|expensive)\\b",
-        "\\bfees?\\b"
+        "\\bfees?\\b",
+        "\\bcharge[sd]?\\b"
+      ],
+      "except": [
+        "\\bcost cent(?:re|er)s?\\b",
+        "\\b(?:hiring|people|labou?r|payroll|headcount|staff|staffing|recruitment|recruiting|training|turnover|operating|admin|travel|employment|salary)\\s+costs?\\b",
+        "\\b(?:reduc|cut|lower|sav|control|track|forecast|allocat|manag|report)\\w*\\s+(?:(?:on|our|the|your)\\s+)?(?:\\w+\\s+)?costs?\\b",
+        "\\bhow much\\s+(?:time|effort|work|training|support|customi[sz]ation|setup|set-up|configuration|data|history|detail|control|visibility|of)\\b",
+        "\\bhow much (?:longer|faster|easier)\\b",
+        "\\bquote (?:you|that|this|it)\\b",
+        "\\b(?:how many|how often|number of)\\b[^.?!]*\\bper (?:employee|user|seat|head|month)\\b",
+        "\\b(?:pension|legal|bank|agency|recruitment|recruiter|late|transaction|membership|union|tuition)\\s+fees?\\b",
+        "\\bfees?\\s+and\\s+deductions\\b",
+        "\\bin charge\\b"
       ],
       "note": "Pavlo, 9 Nov: every price question gets this reply"
     },
