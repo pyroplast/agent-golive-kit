@@ -248,6 +248,8 @@ class LiveAgent(DemoAgent):
             reply = f"{reply} {SAFE_TAIL}".strip()
             park = last_q or None
             self._emit("say", SAFE_TAIL, t0)
+        if held and getattr(self, "drop_questions", False):
+            held.clear()  # discovery: code adds the one question for this turn (Pavlo, 9 Nov)
         if held:
             reply = " ".join([reply, *held]).strip()
             for h in held:

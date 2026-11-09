@@ -13,8 +13,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import re
 
 from deploykit.calls import RepeatTracker, _FROM, _INTRO, call_names
-from deploykit.agent import is_question, is_small_talk
-from deploykit.demo_plan import DemoPlan
+from deploykit.agent import asks_for_human, is_question, is_small_talk, is_wrap_up
+from deploykit.demo_plan import DemoPlan, Discovery, agenda, learn_facts
 
 PURPOSE = "I'm the HiBob demo assistant. In today's call, I'll walk you through how the platform works and answer any questions along the way."
 from deploykit.judge import Judge
@@ -34,6 +34,7 @@ class ChatSession:
         self.agent.context_names = set()
         self.repeats = RepeatTracker(self.config)
         self.plan = DemoPlan(self.config.get("demo_plan", []))
+        self.discovery = Discovery(self.config.get("qualification", []), self.config.get("discovery_max_questions", 3))
         self.buyer = {}  # what the agent learned about the buyer, shown above the question list
 
     def ask(self, text: str, on_event=None) -> dict:
@@ -47,27 +48,69 @@ class ChatSession:
                 on_event(e)
         self.agent.on_event = listen
         start = time.perf_counter()
-        intro = not is_question(text) and (self.turn_no == 0 or bool(_INTRO.search(text) or _FROM.search(text)))
-        guide = self.plan.before(text, intro=intro and not is_small_talk(text))
+        first = self.turn_no == 0
+        asked = is_question(text) or asks_for_human(text) or is_wrap_up(text)  # these go to the agent as usual
+        intro = not asked and (first or bool(_INTRO.search(text) or _FROM.search(text)))
+        disc = self.discovery
+        for k, v in learn_facts(text).items():
+            self.buyer.setdefault(k, v)
+        declined = disc.active and not first and disc.is_refusal(text)
+        if declined:
+            disc.stop(declined=True)
+        elif disc.active and not first and not asked and disc.pending:
+            self.buyer.setdefault(disc.pending, text.strip()[:120])  # their answer to the discovery question
+        in_disc = disc.active and not declined
+        guide = self.plan.before(text, intro=intro and not is_small_talk(text)) if not in_disc or not disc.asked else \
+            self.plan.before("", intro=False)  # a "no" to a discovery question is not a "no" to a topic
+        guide = {**guide, "discovery": ("question" if asked else "answer") if in_disc and not first else None}
         self.agent._guide = guide
-        seen = self.repeats.lookup(text)
+        self.agent.drop_questions = in_disc
+        seen = None if declined else self.repeats.lookup(text)
         try:
-            if seen:
+            if declined:
+                from deploykit.agent import fixed_turn
+                t = fixed_turn({"id": "skip_discovery", "reply": "No problem, let's go straight to the demo."}, set())
+                t["kind"] = "clarify"
+            elif (in_disc or first) and not asked and not is_small_talk(text) and (intro or guide["discovery"]):
+                m = _INTRO.search(text)
+                t = self.agent.acknowledge(list(self.history), "en", intro=first or intro,
+                                           name=self.buyer.get("name") or (m.group(1) if m else None))
+            elif seen:
                 t = self.repeats.repeat(seen, text)
             else:
                 t = self.agent.respond(list(self.history), "en", parked=list(self.parked), floor=self.floor,
                                        ledger=list(self.ledger))
-                self.repeats.record(text, t)
+                self.repeats.record(text, dict(t))  # before the agenda or a follow-up is added
         finally:
             self.agent.on_event = None
             self.agent._guide = None
+            self.agent.drop_questions = False
         self._learn(text, t)
-        added = self._follow_up(t, guide, first=self.turn_no == 0)
+        lead, q = "", guide["next_question"]
+        if first:
+            disc.active = disc.next_field(self.buyer) is not None
+            lead = agenda(self.config.get("agenda_tour", "the core of the platform"), disc.active)
+        if disc.active:
+            nxt = disc.next_field(self.buyer)
+            if asked and not first and disc.pending and disc.pending not in self.buyer:
+                q = disc.question(disc.pending)  # they asked something instead: answer it, then ask again
+            elif nxt:
+                disc.asked.add(nxt)
+                disc.pending, q = nxt, disc.question(nxt)
+            else:
+                disc.stop()
+                lead = (lead + " " if lead else "") + "Thanks, that gives me a good picture."
+                q = self.plan.next_question()
+        said = t["reply"]
+        added = self._follow_up(t, q, lead, replace=in_disc or first, streamed=any(e["type"] == "say" for e in heard))
         if not any(e["type"] == "say" for e in heard):  # e.g. the wrap-up, written by code in one piece
             listen({"type": "say", "text": t["reply"], "t": round(time.perf_counter() - start, 3)})
         elif added:
             listen({"type": "say", "text": added, "t": round(time.perf_counter() - start, 3)})
-        self.plan.after(t, guide)
+        # coverage counts what the agent said, not the agenda code added (it names topics too)
+        self.plan.after({**t, "reply": t["reply"].replace(lead, " ") if lead else t["reply"]}, guide)
+        if disc.active:
+            self.plan.offered = None  # a "yes" now answers the discovery question, not a topic offer
         self.turn_no += 1
         t["n"] = self.turn_no
         if t.get("tier"):
@@ -88,27 +131,24 @@ class ChatSession:
 
 
     @staticmethod
-    def _follow_up(t: dict, guide: dict, first: bool = False) -> str:
-        """Every reply ends with a follow-up question that keeps the demo moving (not after a wrap-up or handoff).
-        A small-talk reply gets the planned question in place of its own."""
+    def _follow_up(t: dict, q: str, lead: str = "", replace: bool = False, streamed: bool = False) -> str:
+        """Every reply ends with one follow-up question that keeps the call moving (not after a wrap-up or handoff).
+        A small-talk reply, or one during discovery, gets the planned question in place of its own; the first reply
+        also gets the call agenda (Pavlo, 9 Nov)."""
         if t.get("wrap_up") or t.get("handoff"):
             return ""
-        q = guide["next_question"]
-        if t.get("small_talk"):
-            parts = re.split(r"(?<=[.!?])\s+", t["reply"].strip())
+        parts = re.split(r"(?<=[.!?])\s+", t["reply"].strip())
+        if (replace and not streamed) or t.get("small_talk"):
             while parts and parts[-1].rstrip().endswith("?"):
                 parts.pop()
-            if first:  # a first "hey": welcome them and say what the call is for (Pavlo, 9 Nov)
-                parts.append(PURPOSE)
-            t["reply"] = " ".join(parts + [q]).strip()
+        elif parts and parts[-1].rstrip().endswith("?") and not lead and not replace:
             return ""
-        if t["reply"].rstrip().endswith("?"):
-            return ""
-        body = t["reply"].rstrip()
+        body = " ".join(parts).rstrip()
         if body and body[-1] not in ".!?":
             body += "."  # never run the follow-up into the previous sentence
-        t["reply"] = f"{body} {q}".strip()
-        return q
+        added = " ".join(x for x in (lead, q) if x)
+        t["reply"] = f"{body} {added}".strip()
+        return added
 
     def _learn(self, text: str, t: dict) -> None:
         if "name" not in self.buyer and _INTRO.search(text):
@@ -129,7 +169,8 @@ def turn_summary(t: dict, s: ChatSession, chunks) -> dict:
         "n": t.get("n"), "reply": t["reply"], "tier": t.get("tier"), "model": t.get("model_role", "agent"),
         "timing": t.get("timing") or {}, "handoff": bool(t.get("handoff")), "park": t.get("park"),
         "wrap_up": bool(t.get("wrap_up")), "fixed": t.get("fixed"), "repeat": bool(t.get("repeat")),
-        "buyer": dict(s.buyer), "plan": s.plan.summary(),
+        "buyer": dict(s.buyer),
+        "plan": {**s.plan.summary(), "phase": "discovery" if s.discovery.active else "demo"},
         "guard": {"slow_path": bool(g.get("slow_path")), "skipped": g.get("skipped", 0),
                   "repeated": g.get("repeated", 0),
                   "approved_answer": g.get("approved_substitute") or t.get("approved_answer") or [],
@@ -274,7 +315,7 @@ function showHood(t){const g=t.guard,tm=t.timing||{};let h='';
  h+='<h3>Sources quoted</h3>'+(t.sources.length?'<ul>'+t.sources.map(s=>`<li><a href="${esc(s.url)}" target="_blank">${esc(s.title)} › ${esc(s.heading)}</a> <span class="empty">[${esc(s.id)}]</span></li>`).join('')+'</ul>':'<p class="empty">none</p>');
  if(t.judge)h+='<h3>Judge (DeepSeek-V4-Pro)</h3>'+row('Grounded',t.judge.grounded?'yes':'<b style="color:#b34a1c">no</b>')+(t.judge.unsupported_claims&&t.judge.unsupported_claims.length?'<ul>'+t.judge.unsupported_claims.map(c=>`<li>${esc(c)}</li>`).join('')+'</ul>':'')+`<p class="empty">${esc(t.judge.notes||'')}</p>`;
  h+='<h3>Call memory</h3>'+row('Messages',t.memory.messages)+row('Facts already given',t.memory.facts)+row('Risk carried to next turn',t.memory.risk_carried||'none');
- const P=t.plan||{topics:[]};h+='<h3>Demo plan</h3>'+(P.topics.length?'<ol style="font-size:13px;padding-left:18px">'+P.topics.map(x=>`<li style="color:${x.status==='covered'?'#1d5fae':x.status==='next'?'#15181d':'#9aa0a8'};font-weight:${x.status==='next'?'600':'400'}">${esc(x.title)}${x.status==='covered'?' ✓':x.status==='next'?' ← offered next':x.status==='skipped'?' (skipped)':''}</li>`).join('')+'</ol>':'<p class="empty">no plan</p>');
+ const P=t.plan||{topics:[]};h+='<h3>Demo plan</h3>'+row('Phase',P.phase==='discovery'?'getting to know the buyer':'demo')+(P.topics.length?'<ol style="font-size:13px;padding-left:18px">'+P.topics.map(x=>`<li style="color:${x.status==='covered'?'#1d5fae':x.status==='next'?'#15181d':'#9aa0a8'};font-weight:${x.status==='next'?'600':'400'}">${esc(x.title)}${x.status==='covered'?' ✓':x.status==='next'?' ← offered next':x.status==='skipped'?' (skipped)':''}</li>`).join('')+'</ol>':'<p class="empty">no plan</p>');
  const B=t.buyer||{},L={name:'Name',company:'Company',company_size:'Employees',countries:'Countries',current_system:'Uses today',modules:'Interested in',timeline:'Timeline'};
  h+='<h3>About the buyer</h3>'+(Object.keys(B).length?Object.keys(B).map(k=>row(L[k]||k,esc(B[k]))).join(''):'<p class="empty">nothing yet</p>');
  h+='<h3>Question list for the sales representative</h3>'+(t.parked.length?'<ol style="font-size:13px;padding-left:18px">'+t.parked.map(p=>`<li>${esc(p)}</li>`).join('')+'</ol>':'<p class="empty">empty</p>');

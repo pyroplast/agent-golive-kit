@@ -62,7 +62,9 @@ def test_the_same_question_gets_the_same_answer_and_goes_on_the_list_the_second_
     a = s.ask("Does Bob support OKRs?")
     calls = llm.agent_calls
     b = s.ask("Does Bob support OKRs?")
-    assert b["reply"] == a["reply"] and llm.agent_calls == calls  # no new model call: it can't drift
+    from deploykit.demo_plan import agenda
+    first = a["reply"].replace(agenda(CONFIG["agenda_tour"], True) + " ", "")  # the agenda is said once
+    assert b["reply"] == first and llm.agent_calls == calls  # no new model call: it can't drift
     assert s.parked.count("Does Bob support OKRs?") == 1 and b["repeat"] is True
     s.ask("does bob support OKRs")
     assert s.parked.count("Does Bob support OKRs?") == 1  # once on the list is enough

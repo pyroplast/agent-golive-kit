@@ -139,6 +139,16 @@ features, prices or customers, and invite them back to the demo with one short q
 Reply with JSON only: {{"reply": "<your reply>", "qualification": {{"name": "", "company": ""}}}}"""
 
 
+ACK_SYSTEM = """You are {name}, HiBob's AI sales assistant on a live demo call. {task}
+Do not mention Bob, HiBob or anything about the product, its features, prices or customers. Do not ask a question: the call agenda or the next
+question is added after your reply.
+Reply with JSON only: {{"reply": "<your reply>"}}"""
+ACK_INTRO = ("The prospect just introduced themselves. Greet them by name if they gave it and show in one short sentence "
+             "that you understood their situation (size, countries, current tools). Do not present product facts yet.")
+ACK_ANSWER = ("Before the demo you are getting to know the prospect, and they just answered your question. Acknowledge "
+              "their answer in one short, warm sentence that mirrors a detail of what they said.")
+
+
 def fixed_answer(config: dict, question: str) -> dict | None:
     """A reply the client fixed in advance (config "fixed_answers"), such as the one for every price question."""
     for f in config.get("fixed_answers", []):
@@ -363,23 +373,34 @@ class DemoAgent:
             system += "\n\n" + prompt_block(self._guide)
         return system + ("\n\n" + self.policy.prompt_block(tier, question) if self.policy and tier else "")
 
-    def _small_talk(self, history, lang):
+    def acknowledge(self, history, lang, intro=False, name=None):
+        """The buyer introduced themselves or answered a discovery question: a short acknowledgement from the fast
+        model, with no product claims (the guard would block a plain "Onboarding, got it." as an unbacked fact)."""
+        me = self.config.get("agent_name", "the HiBob assistant")
+        return self._small_talk(history, lang, ACK_SYSTEM.format(name=me, task=ACK_INTRO if intro else ACK_ANSWER),
+                                (f"Hi {name}, great to meet you." if name else "Hi, great to meet you.") if intro
+                                else "Thanks, that's helpful context.", digits=True)
+
+    def _small_talk(self, history, lang, system=None, fallback=None, digits=False):
         """A greeting or pleasantry: a short, friendly reply from the fast model, with no product claims; code
         checks that, and a plain line replaces a reply that talks about the product (Pavlo, 9 Nov)."""
         import time as _time
         start = _time.perf_counter()
         last = history[-1]["content"]
-        system = SMALL_TALK_SYSTEM.format(name=self.config.get("agent_name", "the HiBob assistant"))
+        system = system or SMALL_TALK_SYSTEM.format(name=self.config.get("agent_name", "the HiBob assistant"))
         r = self.llm.complete("agent_fast", system, history[-6:], meta={"chunks": [], "lang": lang, "small_talk": True})
         data, _ = self._parse(r.text)
         reply = strip_cites(str(data.get("reply", "")).strip())
-        product = re.compile(r"\b(?:bob|hibob|" + "|".join(re.escape(g.lower()) for g in self.glossary) + r")\b|\d", re.I) \
-            if self.glossary else re.compile(r"\b(?:bob|hibob)\b|\d", re.I)
+        digit = "" if digits else r"|\d"  # numbers the buyer gave may be mirrored back
+        product = re.compile(r"\b(?:bob|hibob|" + "|".join(re.escape(g.lower()) for g in self.glossary) + r")\b" + digit, re.I) \
+            if self.glossary else re.compile(r"\b(?:bob|hibob)\b" + digit, re.I)
         sentences = [x for x in re.split(r"(?<=[.!?])\s+", reply) if x]
         bad = (not reply or len(reply) > 320 or data.get("claims")
                or any(product.search(x) and not x.rstrip().endswith("?") for x in sentences))
         turn = wrap_up_turn([])
-        turn.update(reply=small_talk_fallback(last) if bad else reply, wrap_up=False, small_talk=True,
+        if bad:
+            reply = fallback or small_talk_fallback(last)
+        turn.update(reply=reply, wrap_up=False, small_talk=True,
                     qualification=data.get("qualification") if isinstance(data.get("qualification"), dict) else {},
                     guard={"enabled": True, "retried": False, "fell_back": bool(bad), "composed": False},
                     model_role="agent_fast")

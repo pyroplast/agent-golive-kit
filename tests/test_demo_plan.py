@@ -26,11 +26,13 @@ class Script(MockLLM):
         return super().complete(role, system, messages, meta)
 
 
-def session(chunks, replies, guard=True):
+def session(chunks, replies, guard=True, discovery=False):
     from deploykit.agent import DemoAgent
     llm = Script(replies)
     s = ChatSession(CONFIG, chunks, llm)
     s.agent = DemoAgent(CONFIG, chunks, llm) if guard else DemoAgent(CONFIG, chunks, llm, guard=False)
+    if not discovery:
+        s.discovery.stop()  # these tests are about the demo itself; tests/test_discovery.py covers the start
     return s, llm
 
 
@@ -90,10 +92,10 @@ def test_no_skips_the_offered_topic(chunks):
 
 
 def test_small_talk_ends_with_the_planned_question(chunks):
-    from deploykit.chat import PURPOSE
+    from deploykit.demo_plan import agenda
     s, _ = session(chunks, [{"reply": "Hi! Nice to meet you. What would you like to see today?"}])
     t = s.ask("Hi")
-    assert t["reply"] == f"Hi! Nice to meet you. {PURPOSE} " + CONFIG["demo_plan"][0]["question"]
+    assert t["reply"] == f"Hi! Nice to meet you. {agenda(CONFIG['agenda_tour'], False)} " + CONFIG["demo_plan"][0]["question"]
 
 
 def test_wrap_up_and_handoff_get_no_follow_up(chunks):
@@ -133,7 +135,7 @@ def test_an_introduction_gets_greeted_and_reflected_without_product_facts(chunks
     t = s.ask(INTRO)
     p = llm.systems[-1]
     assert "Greet them by name" in p and "Do not present product facts yet" in p
-    assert "in your own words" in p and "offers Core HR" in p
+    assert t["reply"].endswith(CONFIG["demo_plan"][0]["question"]) and "Here's the plan for today" in t["reply"]
     assert t["reply"].count("?") == 1 and s.plan.offered == "core" and s.plan.covered == set()
 
 
@@ -146,10 +148,10 @@ def test_a_topic_described_in_the_reply_is_not_offered_again(chunks):
 
 
 def test_a_first_hey_gets_a_welcome_and_the_call_purpose(chunks):
-    from deploykit.chat import PURPOSE
+    from deploykit.demo_plan import agenda
     s, _ = session(chunks, [{"reply": "Hey there!"}])
     t = s.ask("hey!")
-    assert t["reply"] == f"Hey there! {PURPOSE} {CONFIG['demo_plan'][0]['question']}"
+    assert t["reply"] == f"Hey there! {agenda(CONFIG['agenda_tour'], False)} {CONFIG['demo_plan'][0]['question']}"
 
 
 def test_topic_questions_are_short():

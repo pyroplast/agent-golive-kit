@@ -54,23 +54,28 @@
   "qualification": [
     {
       "field": "company_size",
-      "question": "How many employees do you have?"
+      "question": "How many employees do you have?",
+      "ask": "Roughly how many people are on your team?"
     },
     {
       "field": "countries",
-      "question": "Which countries do you employ people in?"
+      "question": "Which countries do you employ people in?",
+      "ask": "Which countries do you employ people in?"
     },
     {
       "field": "current_system",
-      "question": "What do you use for HR today?"
+      "question": "What do you use for HR today?",
+      "ask": "What do you use for HR today?"
     },
     {
       "field": "modules",
-      "question": "Which areas matter most: core HR, talent, payroll, or compensation?"
+      "question": "Which areas matter most: core HR, talent, payroll, or compensation?",
+      "ask": "What's the biggest HR headache you'd like to fix first?"
     },
     {
       "field": "timeline",
-      "question": "When do you want to be live?"
+      "question": "When do you want to be live?",
+      "ask": "And when would you ideally like to be up and running?"
     }
   ],
   "handoff_rules": [
@@ -401,5 +406,7 @@
         "okta"
       ]
     }
-  ]
+  ],
+  "discovery_max_questions": 3,
+  "agenda_tour": "Core HR, onboarding, the employee app and anything else you'd like to see"
 }

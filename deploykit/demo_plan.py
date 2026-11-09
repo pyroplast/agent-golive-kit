@@ -28,6 +28,64 @@ def is_negative(text: str) -> bool:
     return _clean(text) in NEGATE
 
 
+_COUNTRIES = ["UK", "United Kingdom", "England", "Scotland", "Ireland", "Spain", "France", "Germany", "Portugal",
+              "Italy", "Netherlands", "Poland", "US", "USA", "United States", "Canada", "Mexico", "Brazil", "India",
+              "Australia", "Israel", "Sweden", "Denmark", "Belgium", "Switzerland", "Austria"]
+_SYSTEMS = ["spreadsheets", "spreadsheet", "excel", "google sheets", "bamboohr", "personio", "workday", "sage",
+            "hibob", "rippling", "deel", "factorial", "paper", "email"]
+_SIZE = re.compile(r"\b(\d[\d,]*)\s*(?:\+\s*)?(?:people|employees|staff|person|ppl|fte)", re.I)
+_REFUSE = re.compile(r"\b(?:rather not|prefer not|skip|not now|no time|just (?:show|see|start|demo)|straight to|"
+                     r"let'?s (?:just )?(?:see|start|get to|go to|jump)|show me the (?:demo|product)|"
+                     r"don'?t want to (?:answer|share|say)|not sharing|none of your business)\b", re.I)
+
+
+def learn_facts(text: str) -> dict:
+    """Facts a prospect states about themselves, read by code (the panel and discovery use them)."""
+    out = {}
+    m = _SIZE.search(text)
+    if m:
+        out["company_size"] = m.group(1).replace(",", "")
+    found = [c for c in _COUNTRIES if re.search(rf"\b{re.escape(c)}\b", text)]
+    if found:
+        out["countries"] = ", ".join(dict.fromkeys(found))
+    low = text.lower()
+    sys_ = next((x for x in _SYSTEMS if re.search(rf"\b{re.escape(x)}\b", low)), None)
+    if sys_:
+        out["current_system"] = "spreadsheets" if sys_ == "spreadsheet" else sys_
+    return out
+
+
+class Discovery:
+    """Before the demo: a few questions about the client (Pavlo, 9 Nov). Asks only what isn't known yet, each
+    question once, at most max_questions; stops for good if the client would rather skip it."""
+
+    def __init__(self, fields: list[dict], max_questions: int = 3):
+        self.fields = [dict(f) for f in fields]
+        self.max_questions = max_questions
+        self.asked, self.pending, self.active, self.declined = set(), None, True, False
+
+    def question(self, field: str) -> str:
+        f = next(x for x in self.fields if x["field"] == field)
+        return f.get("ask") or f["question"]
+
+    def next_field(self, known: dict):
+        if not self.active or len(self.asked) >= self.max_questions:
+            return None
+        return next((f["field"] for f in self.fields if f["field"] not in known and f["field"] not in self.asked), None)
+
+    @staticmethod
+    def is_refusal(text: str) -> bool:
+        return is_negative(text) or bool(_REFUSE.search(text))
+
+    def stop(self, declined: bool = False):
+        self.active, self.pending, self.declined = False, None, declined
+
+
+def agenda(tour: str, discovery: bool) -> str:
+    first = "a few quick questions about your team, then " if discovery else ""
+    return f"Here's the plan for today: {first}a walkthrough of Bob ({tour}), and I'll answer your questions along the way."
+
+
 class DemoPlan:
     def __init__(self, topics: list[dict]):
         self.topics = [dict(t) for t in topics]
@@ -104,10 +162,22 @@ def prompt_block(guide: dict) -> str:
              "questions as they come, and keep them engaged.",
              "Covered so far: " + (", ".join(guide["covered"]) or "nothing yet") + ". Do not repeat those."]
     p = guide.get("present")
+    disc = guide.get("discovery")
     if guide.get("intro"):
-        lines.append("The prospect just introduced themselves. Greet them by name if they gave it, show in one short "
-                     "sentence that you understood their situation (size, countries, current tools), and say you'll "
-                     "walk them through how Bob would work for them. Do not present product facts yet.")
+        lines.append("The prospect just introduced themselves. Greet them by name if they gave it and show in one short "
+                     "sentence that you understood their situation (size, countries, current tools). Do not present "
+                     "product facts yet. Do not ask a question: the call agenda and the next question are added after "
+                     "your reply.")
+        return "\n".join(lines)
+    if disc == "answer":
+        lines.append("Before the demo you are getting to know the prospect, and they just answered your question. "
+                     "Acknowledge their answer in a few words, without product facts. Do not ask a question: the next "
+                     "one is added after your reply.")
+        return "\n".join(lines)
+    if disc == "question":
+        lines.append("Answer the prospect's question in two to four sentences. Do not ask a question: the next one is "
+                     "added after your reply.")
+        return "\n".join(lines)
     elif p:
         lines.append(f"The prospect agreed to hear about: {p['title']}. Present it now in two to four sentences, each "
                      f"backed by a quote from the sources (sections: {', '.join(p['sections'])}).")
