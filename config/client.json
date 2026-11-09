@@ -239,7 +239,15 @@
       "sections": [
         "core"
       ],
-      "question": "Shall I start with how Bob keeps all your people data and org structure in one place?"
+      "question": "Shall we start with Core HR, where all your people data lives?",
+      "keywords": [
+        "core hr",
+        "people data",
+        "org chart",
+        "org structure",
+        "employee records",
+        "single source"
+      ]
     },
     {
       "id": "onboarding",
@@ -247,7 +255,14 @@
       "sections": [
         "automation"
       ],
-      "question": "Would you like to see how onboarding runs automatically from the hire date?"
+      "question": "Want to see how onboarding runs automatically from the hire date?",
+      "keywords": [
+        "onboarding",
+        "workflow",
+        "hire date",
+        "new hire",
+        "esign"
+      ]
     },
     {
       "id": "self-service",
@@ -255,7 +270,13 @@
       "sections": [
         "self-service"
       ],
-      "question": "Shall I show you what employees see in the app and on mobile?"
+      "question": "Shall I show you what employees see in the app?",
+      "keywords": [
+        "self-service",
+        "mobile app",
+        "homepage",
+        "employee app"
+      ]
     },
     {
       "id": "time",
@@ -263,7 +284,14 @@
       "sections": [
         "time"
       ],
-      "question": "Would it help to see how time off and attendance work?"
+      "question": "Want to see how time off and attendance work?",
+      "keywords": [
+        "time off",
+        "attendance",
+        "leave",
+        "absence",
+        "clock in"
+      ]
     },
     {
       "id": "performance",
@@ -271,7 +299,15 @@
       "sections": [
         "performance"
       ],
-      "question": "Shall we look at performance reviews and goals next?"
+      "question": "Shall we look at performance reviews and goals?",
+      "keywords": [
+        "performance",
+        "review",
+        "goals",
+        "okr",
+        "calibration",
+        "1-on-1"
+      ]
     },
     {
       "id": "hiring",
@@ -279,7 +315,15 @@
       "sections": [
         "hiring"
       ],
-      "question": "Would you like to see how hiring works, from job post to offer?"
+      "question": "Want to see how hiring works, from job post to offer?",
+      "keywords": [
+        "hiring",
+        "applicant",
+        "candidate",
+        "job post",
+        "ats",
+        "recruit"
+      ]
     },
     {
       "id": "compensation",
@@ -287,7 +331,14 @@
       "sections": [
         "compensation"
       ],
-      "question": "Shall I show you how compensation cycles and budgets work?"
+      "question": "Shall I show you compensation cycles and budgets?",
+      "keywords": [
+        "compensation",
+        "pay band",
+        "salary",
+        "budget",
+        "pay equity"
+      ]
     },
     {
       "id": "payroll",
@@ -296,7 +347,12 @@
         "payroll-hub",
         "payroll-uk"
       ],
-      "question": "Would you like to see how payroll fits in?"
+      "question": "Want to see how payroll fits in?",
+      "keywords": [
+        "payroll",
+        "pay cycle",
+        "benefits"
+      ]
     },
     {
       "id": "analytics",
@@ -304,7 +360,13 @@
       "sections": [
         "analytics"
       ],
-      "question": "Shall I show you the reporting and analytics?"
+      "question": "Shall I show you the reporting and analytics?",
+      "keywords": [
+        "report",
+        "analytics",
+        "dashboard",
+        "insight"
+      ]
     },
     {
       "id": "security",
@@ -313,7 +375,16 @@
         "security",
         "ai"
       ],
-      "question": "Would you like to cover security and how Bob AI handles your data?"
+      "question": "Want to cover security and how Bob AI handles your data?",
+      "keywords": [
+        "security",
+        "certification",
+        "iso",
+        "soc 2",
+        "hosting",
+        "encryption",
+        "bob ai"
+      ]
     },
     {
       "id": "integrations",
@@ -321,7 +392,14 @@
       "sections": [
         "integrations"
       ],
-      "question": "Shall I show you how Bob connects to the tools you already use?"
+      "question": "Shall I show you how Bob connects to your other tools?",
+      "keywords": [
+        "integration",
+        "api",
+        "connect",
+        "slack",
+        "okta"
+      ]
     }
   ]
 }

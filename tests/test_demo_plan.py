@@ -26,11 +26,11 @@ class Script(MockLLM):
         return super().complete(role, system, messages, meta)
 
 
-def session(chunks, replies):
+def session(chunks, replies, guard=True):
     from deploykit.agent import DemoAgent
     llm = Script(replies)
     s = ChatSession(CONFIG, chunks, llm)
-    s.agent = DemoAgent(CONFIG, chunks, llm)
+    s.agent = DemoAgent(CONFIG, chunks, llm) if guard else DemoAgent(CONFIG, chunks, llm, guard=False)
     return s, llm
 
 
@@ -63,7 +63,7 @@ def test_yes_presents_the_offered_topic(chunks):
     s.ask("What are we doing here?")
     t = s.ask("yes")
     assert llm.roles[-1] == "agent"  # "yes" is not small talk here
-    assert "agreed to hear about: Core HR" in llm.systems[-1] and "core" in llm.systems[-1]
+    assert "agreed to hear about: Core HR" in llm.systems[-1] and "sections: core" in llm.systems[-1]
     assert t["reply"].endswith("?")  # and it offers the next topic
 
 
@@ -90,9 +90,10 @@ def test_no_skips_the_offered_topic(chunks):
 
 
 def test_small_talk_ends_with_the_planned_question(chunks):
+    from deploykit.chat import PURPOSE
     s, _ = session(chunks, [{"reply": "Hi! Nice to meet you. What would you like to see today?"}])
     t = s.ask("Hi")
-    assert t["reply"] == "Hi! Nice to meet you. " + CONFIG["demo_plan"][0]["question"]
+    assert t["reply"] == f"Hi! Nice to meet you. {PURPOSE} " + CONFIG["demo_plan"][0]["question"]
 
 
 def test_wrap_up_and_handoff_get_no_follow_up(chunks):
@@ -118,3 +119,38 @@ def test_a_reply_without_a_full_stop_is_closed_before_the_follow_up(chunks):
     s, _ = session(chunks, [{"reply": "Happy to help", "kind": "clarify"}])
     t = s.ask("Tell me about Bob")
     assert t["reply"].startswith("Happy to help. ")
+
+
+# --- Pavlo, 9 Nov: "it became worse" -----------------------------------------------------------------------------
+
+INTRO = "Hi, I'm Alex, Head of People at Lumen Studios. We're 300 people in the UK and Spain and use spreadsheets today."
+
+
+def test_an_introduction_gets_greeted_and_reflected_without_product_facts(chunks):
+    s, llm = session(chunks, [{"reply": "Hi Alex! Moving 300 people in the UK and Spain off spreadsheets is a great "
+                                         "place to start. Shall we begin with Core HR, where all your people data lives?",
+                               "kind": "clarify"}])
+    t = s.ask(INTRO)
+    p = llm.systems[-1]
+    assert "Greet them by name" in p and "Do not present product facts yet" in p
+    assert "in your own words" in p and "offers Core HR" in p
+    assert t["reply"].count("?") == 1 and s.plan.offered == "core" and s.plan.covered == set()
+
+
+def test_a_topic_described_in_the_reply_is_not_offered_again(chunks):
+    s, _ = session(chunks, [{"reply": "Bob's Core HR keeps your people data and org structure in one place. "
+                                      "Want to see how onboarding runs automatically from the hire date?",
+                             "kind": "clarify"}], guard=False)
+    s.ask("Tell me about Bob")
+    assert "core" in s.plan.covered and s.plan.offered == "onboarding"
+
+
+def test_a_first_hey_gets_a_welcome_and_the_call_purpose(chunks):
+    from deploykit.chat import PURPOSE
+    s, _ = session(chunks, [{"reply": "Hey there!"}])
+    t = s.ask("hey!")
+    assert t["reply"] == f"Hey there! {PURPOSE} {CONFIG['demo_plan'][0]['question']}"
+
+
+def test_topic_questions_are_short():
+    assert all(len(t["question"].split()) <= 12 for t in CONFIG["demo_plan"])

@@ -13,7 +13,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import re
 
 from deploykit.calls import RepeatTracker, _FROM, _INTRO, call_names
+from deploykit.agent import is_question, is_small_talk
 from deploykit.demo_plan import DemoPlan
+
+PURPOSE = "I'm the HiBob demo assistant. In today's call, I'll walk you through how the platform works and answer any questions along the way."
 from deploykit.judge import Judge
 from deploykit.live import LiveAgent
 from deploykit.risk import max_tier
@@ -44,7 +47,8 @@ class ChatSession:
                 on_event(e)
         self.agent.on_event = listen
         start = time.perf_counter()
-        guide = self.plan.before(text)
+        intro = not is_question(text) and (self.turn_no == 0 or bool(_INTRO.search(text) or _FROM.search(text)))
+        guide = self.plan.before(text, intro=intro and not is_small_talk(text))
         self.agent._guide = guide
         seen = self.repeats.lookup(text)
         try:
@@ -58,7 +62,7 @@ class ChatSession:
             self.agent.on_event = None
             self.agent._guide = None
         self._learn(text, t)
-        added = self._follow_up(t, guide)
+        added = self._follow_up(t, guide, first=self.turn_no == 0)
         if not any(e["type"] == "say" for e in heard):  # e.g. the wrap-up, written by code in one piece
             listen({"type": "say", "text": t["reply"], "t": round(time.perf_counter() - start, 3)})
         elif added:
@@ -84,7 +88,7 @@ class ChatSession:
 
 
     @staticmethod
-    def _follow_up(t: dict, guide: dict) -> str:
+    def _follow_up(t: dict, guide: dict, first: bool = False) -> str:
         """Every reply ends with a follow-up question that keeps the demo moving (not after a wrap-up or handoff).
         A small-talk reply gets the planned question in place of its own."""
         if t.get("wrap_up") or t.get("handoff"):
@@ -94,6 +98,8 @@ class ChatSession:
             parts = re.split(r"(?<=[.!?])\s+", t["reply"].strip())
             while parts and parts[-1].rstrip().endswith("?"):
                 parts.pop()
+            if first:  # a first "hey": welcome them and say what the call is for (Pavlo, 9 Nov)
+                parts.append(PURPOSE)
             t["reply"] = " ".join(parts + [q]).strip()
             return ""
         if t["reply"].rstrip().endswith("?"):

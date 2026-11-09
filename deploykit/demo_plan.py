@@ -43,8 +43,9 @@ class DemoPlan:
         t = self.upcoming(exclude)
         return t["question"] if t else DONE
 
-    def before(self, text: str) -> dict:
-        """What the agent is told for this turn: a topic to present (after a yes) and the follow-up to end with."""
+    def before(self, text: str, intro: bool = False) -> dict:
+        """What the agent is told for this turn: a topic to present (after a yes), two topics it may offer next,
+        and whether this is the buyer's introduction."""
         present = None
         if self.offered and is_affirmative(text):
             present = self.topic(self.offered)
@@ -52,18 +53,42 @@ class DemoPlan:
             self.declined.add(self.offered)
         exclude = {present["id"]} if present else set()
         nxt = self.upcoming(exclude)
-        return {"present": present, "next_id": nxt["id"] if nxt else None, "next_question": self.next_question(exclude),
+        nxt2 = self.upcoming(exclude | ({nxt["id"]} if nxt else set()))
+        return {"present": present, "intro": intro, "next_id": nxt["id"] if nxt else None,
+                "next2_id": nxt2["id"] if nxt2 else None, "next_title": nxt["title"] if nxt else None,
+                "next2_title": nxt2["title"] if nxt2 else None, "next_question": self.next_question(exclude),
+                "next2_question": nxt2["question"] if nxt2 else DONE,
                 "covered": [t["title"] for t in self.topics if t["id"] in self.covered]}
 
+    @staticmethod
+    def _mentions(topic: dict, text: str) -> int:
+        low = text.lower()
+        return sum(k in low for k in topic.get("keywords", [])) + (topic["title"].lower() in low)
+
     def after(self, turn: dict, guide: dict) -> None:
+        reply = turn.get("reply", "")
+        sentences = re.split(r"(?<=[.!?])\s+", reply.strip())
+        questions = [x for x in sentences if x.rstrip().endswith("?")]
+        statements = " ".join(x for x in sentences if not x.rstrip().endswith("?"))
         docs = {c.split("#")[0] for c in turn.get("citations", [])}
         for t in self.topics:
-            if set(t["sections"]) & docs:
+            # covered: a cited section, or the reply itself talked about it (Pavlo, 9 Nov: Core HR was described,
+            # then offered again)
+            if set(t["sections"]) & docs or (not guide.get("intro") and self._mentions(t, statements) >= 2):
                 self.covered.add(t["id"])
         if guide.get("present"):
             self.covered.add(guide["present"]["id"])
-        if not (turn.get("wrap_up") or turn.get("handoff")):
-            self.offered = guide.get("next_id")
+        if turn.get("wrap_up") or turn.get("handoff"):
+            return
+        # offered next: the topic the closing question is about (the model words it itself)
+        last_q = questions[-1] if questions else ""
+        best = max((t for t in self.topics if t["id"] not in self.covered | self.declined),
+                   key=lambda t: self._mentions(t, last_q), default=None)
+        if best is not None and self._mentions(best, last_q) > 0:
+            self.offered = best["id"]
+        else:
+            nxt = self.upcoming()
+            self.offered = nxt["id"] if nxt else None
 
     def summary(self) -> dict:
         nxt = self.topic(self.offered)
@@ -75,14 +100,23 @@ class DemoPlan:
 
 
 def prompt_block(guide: dict) -> str:
-    lines = ["DEMO PLAN. Your goal: walk the prospect through HiBob's core topics, one per reply, and answer their "
-             "questions as they come.",
+    lines = ["DEMO PLAN. Your goal: walk the prospect through HiBob's core topics, one per reply, answer their "
+             "questions as they come, and keep them engaged.",
              "Covered so far: " + (", ".join(guide["covered"]) or "nothing yet") + ". Do not repeat those."]
     p = guide.get("present")
-    if p:
+    if guide.get("intro"):
+        lines.append("The prospect just introduced themselves. Greet them by name if they gave it, show in one short "
+                     "sentence that you understood their situation (size, countries, current tools), and say you'll "
+                     "walk them through how Bob would work for them. Do not present product facts yet.")
+    elif p:
         lines.append(f"The prospect agreed to hear about: {p['title']}. Present it now in two to four sentences, each "
                      f"backed by a quote from the sources (sections: {', '.join(p['sections'])}).")
     else:
-        lines.append("Answer the prospect's message first.")
-    lines.append(f'End your reply with this follow-up question, or a close variant: "{guide["next_question"]}"')
+        lines.append("Answer the prospect's message first, in two to four sentences.")
+    if guide.get("next_title"):
+        alt = f" If your reply already covered it, offer {guide['next2_title']} instead." if guide.get("next2_title") else ""
+        lines.append(f"End with ONE short, natural follow-up question in your own words that offers {guide['next_title']} "
+                     f"next.{alt} Tie it to what they told you when you can.")
+    else:
+        lines.append(f'End by asking: "{guide["next_question"]}"')
     return "\n".join(lines)
