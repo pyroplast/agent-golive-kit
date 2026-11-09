@@ -160,3 +160,11 @@ def test_what_the_agent_learned_about_the_buyer_is_collected(chunks):
 def test_live_format_asks_for_the_qualification_fields():
     from deploykit.live import LIVE_SPEC
     assert "company_size" in LIVE_SPEC and "current_system" in LIVE_SPEC
+
+
+def test_suggested_questions_come_in_three_rows_by_complexity():
+    import re as _re
+    rows = _re.findall(r'\["(Basics|From the material|Tricky)"', PAGE)
+    assert rows == ["Basics", "From the material", "Tricky"]
+    assert PAGE.index("What are we doing here?") < PAGE.index("Which security certifications") \
+        < PAGE.index("Are you HIPAA certified?")
