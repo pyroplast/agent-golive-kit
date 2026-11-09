@@ -341,6 +341,132 @@
    "contradictions": 3,
    "gate": false,
    "cost_usd": 0.34
+  },
+  {
+   "run": "calls-gate-1",
+   "change": "Gate v2: evidence, severity, approved answer for dropped sentences",
+   "turns": 75,
+   "passed": 66,
+   "stages": {
+    "1-5": 0.84,
+    "6-10": 0.96,
+    "11-15": 0.84
+   },
+   "contradictions": 0,
+   "gate": true,
+   "cost_usd": 0.3
+  },
+  {
+   "run": "calls-gate-2",
+   "change": "same code (rename only)",
+   "turns": 75,
+   "passed": 64,
+   "stages": {
+    "1-5": 0.8,
+    "6-10": 0.88,
+    "11-15": 0.88
+   },
+   "contradictions": 1,
+   "gate": false,
+   "cost_usd": 0.29
+  },
+  {
+   "run": "calls-gate-3",
+   "change": "same code",
+   "turns": 75,
+   "passed": 64,
+   "stages": {
+    "1-5": 0.88,
+    "6-10": 0.92,
+    "11-15": 0.76
+   },
+   "contradictions": 1,
+   "gate": false,
+   "cost_usd": 0.32
+  },
+  {
+   "run": "calls-gate-4",
+   "change": "Code-written wrap-up; judge wording",
+   "turns": 75,
+   "passed": 67,
+   "stages": {
+    "1-5": 0.8,
+    "6-10": 1.0,
+    "11-15": 0.88
+   },
+   "contradictions": 2,
+   "gate": false,
+   "cost_usd": 0.31
+  },
+  {
+   "run": "calls-gate-5",
+   "change": "same code",
+   "turns": 75,
+   "passed": 64,
+   "stages": {
+    "1-5": 0.8,
+    "6-10": 0.88,
+    "11-15": 0.88
+   },
+   "contradictions": 1,
+   "gate": false,
+   "cost_usd": 0.28
+  },
+  {
+   "run": "calls-gate-6",
+   "change": "same code",
+   "turns": 75,
+   "passed": 69,
+   "stages": {
+    "1-5": 0.92,
+    "6-10": 1.0,
+    "11-15": 0.84
+   },
+   "contradictions": 1,
+   "gate": false,
+   "cost_usd": 0.3
+  },
+  {
+   "run": "calls-gate-7",
+   "change": "Risk carried only to follow-ups; approved text can't contradict; contract answer",
+   "turns": 75,
+   "passed": 59,
+   "stages": {
+    "1-5": 0.76,
+    "6-10": 0.84,
+    "11-15": 0.76
+   },
+   "contradictions": 0,
+   "gate": true,
+   "cost_usd": 0.28
+  },
+  {
+   "run": "calls-gate-8",
+   "change": "same code",
+   "turns": 75,
+   "passed": 65,
+   "stages": {
+    "1-5": 0.84,
+    "6-10": 0.92,
+    "11-15": 0.84
+   },
+   "contradictions": 0,
+   "gate": true,
+   "cost_usd": 0.29
+  },
+  {
+   "run": "calls-gate-9",
+   "change": "same code",
+   "turns": 75,
+   "passed": 66,
+   "stages": {
+    "1-5": 0.84,
+    "6-10": 0.92,
+    "11-15": 0.88
+   },
+   "contradictions": 0,
+   "gate": true,
+   "cost_usd": 0.28
   }
  ]
 }

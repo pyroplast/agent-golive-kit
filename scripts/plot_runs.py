@@ -209,11 +209,19 @@ def render(data: dict) -> str:
             return (f"<tr><td>{escape(c['run'])}</td><td>{escape(c['change'])}</td>"
                     f"<td class='n'>{c['passed']}/{c['turns']}</td>{st}<td class='n'>{c['contradictions']}</td>"
                     f"<td>{'Pass' if c['gate'] else 'Blocked'}</td><td class='n'>${c['cost_usd']:.2f}</td></tr>")
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        from deploykit.gate import release_status
+        rs = release_status(calls, n=3)
+        last = ", ".join(c["run"] for c in calls[-rs["streak"]:]) if rs["streak"] else ""
+        ready = (f"<p class='sub'><b>Release ready:</b> the gate passed {rs['streak']} runs in a row ({escape(last)})."
+                 "</p>" if rs["ready"] else
+                 f"<p class='sub'><b>Not release ready:</b> {rs['streak']} of {rs['needed']} passing runs in a row.</p>")
         calls_html = ("<h2>Chapter 2: demo calls</h2><p class='sub'>5 simulated calls of 15 turns, one question at a "
                       "time, with the whole call in context. Turn pass rate early, middle and late in the call.</p>"
                       "<table><tr><th>Run</th><th>What changed</th><th>Turns passed</th><th>Turns 1-5</th>"
                       "<th>6-10</th><th>11-15</th><th>Contradictions</th><th>Gate</th><th>Cost</th></tr>"
-                      + "".join(crow(c) for c in calls) + "</table>")
+                      + "".join(crow(c) for c in calls) + "</table>" + ready)
     gate = ("<b style='color:var(--ok)'>Pass</b>" if unsafe == 0 else "<b style='color:var(--bad)'>Blocked</b>")
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Agent go-live kit · run history</title>

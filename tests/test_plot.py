@@ -73,3 +73,13 @@ def test_call_runs_get_their_own_section():
 
 def test_no_call_section_without_call_runs():
     assert "Chapter 2" not in render(sample())
+
+
+def test_release_readiness_is_shown_for_call_runs():
+    d = sample()
+    base = {"change": "x", "turns": 75, "passed": 66, "stages": {"1-5": .8, "6-10": .9, "11-15": .9},
+            "contradictions": 0, "cost_usd": 0.3}
+    d["call_runs"] = [{**base, "run": "g1", "gate": False}] + [{**base, "run": f"g{i}", "gate": True} for i in (2, 3, 4)]
+    assert "Release ready" in render(d) and "g2, g3, g4" in render(d)
+    d["call_runs"][-1]["gate"] = False
+    assert "Not release ready" in render(d)
