@@ -142,7 +142,7 @@ def test_easy_turns_use_the_fast_model_and_risky_ones_the_big_model(config, pric
 def test_without_fast_every_turn_uses_the_big_model(config, pricing_chunks):
     clock = Clock()
     llm = StreamLLM([{"say": "Happy to help.", "claims": []}, {"end": True}], clock)
-    live(config, pricing_chunks, llm, clock, fast=False).respond([{"role": "user", "content": "Hi"}], "en")
+    live(config, pricing_chunks, llm, clock, fast=False).respond([{"role": "user", "content": "What do you do?"}], "en")
     assert llm.roles == ["agent"]
 
 

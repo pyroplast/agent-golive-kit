@@ -31,13 +31,13 @@ def test_agent_prompt_contains_rules_sources_and_persona_free_history(config, ch
     llm = FixedLLM(json.dumps({"reply": "Hi", "citations": [], "handoff": False,
                                 "handoff_reason": None, "unknown": False, "qualification": {}}))
     agent = DemoAgent(config, chunks, llm)
-    agent.respond([{"role": "user", "content": "hello"}], lang="en")
+    agent.respond([{"role": "user", "content": "What does Bob do?"}], lang="en")  # "hello" is small talk now
     call = llm.calls[0]
     assert call["role"] == "agent"
     assert "[security#2]" in call["system"]
     for rule in config["rules"]:
         assert rule in call["system"]
-    assert call["messages"] == [{"role": "user", "content": "hello"}]
+    assert call["messages"] == [{"role": "user", "content": "What does Bob do?"}]
 
 
 def test_agent_filters_unknown_citations(config, chunks):

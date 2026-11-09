@@ -60,7 +60,7 @@ def offers_list(reply: str) -> bool:
 
 _WRAP_UP = re.compile(r"\b(?:wrap(?:ping)? (?:this |things |it )?up|out of time|(?:have|need|got) to (?:go|run|jump|drop)|"
                       r"that['’]s all|thanks for (?:your|the) time|before we finish|let['’]s (?:finish|stop) here|"
-                      r"what happens next)\b", re.I)
+                      r"what happens next|bye|goodbye|see you(?: later| soon)?)\b", re.I)
 
 
 _ASK = re.compile(r"\?|^\s*(?:can|could|would|will|do|does|did|is|are|was|were|have|has|should|may|what|how|which|"
@@ -77,6 +77,48 @@ def is_question(text: str) -> bool:
 NOTED_REPLY = "Thanks, that's helpful context."
 
 
+def strip_cites(text: str) -> str:
+    """Remove [chunk#n] markers from what the buyer sees; they are kept as citations (Pavlo, 9 Nov)."""
+    text = _INLINE_CITE.sub("", text)
+    text = re.sub(r"\s+([.,;:!?])", r"\1", text)
+    return re.sub(r"[ \t]{2,}", " ", text).strip()
+
+
+_SMALL = re.compile(
+    r"^(?:(?:hi|hello|hey|hiya|good (?:morning|afternoon|evening)|greetings)(?: there| all| everyone| team)?"
+    r"|how are you(?: doing)?(?: today)?|how['’]?s it going|how are things|what['’]?s up|how is your day"
+    r"|nice to meet you|pleased to meet you|great to meet you|thanks|thank you(?: so much)?|thx|cheers|great|cool|ok|okay"
+    r"|who are you|what['’]?s your name|what is your name|are you (?:a |an )?(?:bot|robot|human|real person|ai|person)"
+    r"|i['’]?m (?:fine|good|great|well|doing (?:well|good|great))(?: thanks)?|i['’]?m [a-z]+|my name is [a-z]+|this is [a-z]+"
+    r"|(?:and )?you)$")
+
+
+def is_small_talk(text: str) -> bool:
+    """A greeting or pleasantry with nothing about the product: 'Hi', 'how are you?', 'who are you?', 'thanks'."""
+    t = (text or "").strip().lower()
+    if not t or len(t.split()) > 10:
+        return False
+    parts = [p.strip() for p in re.split(r"[,.!?;:—–-]+", t) if p.strip()]
+    return bool(parts) and all(_SMALL.match(p) for p in parts)
+
+
+_SMALL_FALLBACK = (
+    (re.compile(r"how are|how['’]?s it|how is your|what['’]?s up|how are things"),
+     "I'm doing well, thanks for asking! What would you like to see in Bob today?"),
+    (re.compile(r"thank|thx|cheers"), "You're welcome! What else would you like to look at?"),
+    (re.compile(r"who are you|your name|bot|robot|human|real person|\bai\b|person"),
+     "I'm HiBob's AI sales assistant. I can walk you through the platform and answer your questions. What would you like to see first?"),
+)
+
+
+def small_talk_fallback(text: str) -> str:
+    low = (text or "").lower()
+    for pattern, reply in _SMALL_FALLBACK:
+        if pattern.search(low):
+            return reply
+    return "Hi! Nice to meet you. What would you like to see in Bob today?"
+
+
 def is_wrap_up(text: str) -> bool:
     """The prospect is ending the call (not asking about next steps of a project mid-call)."""
     return bool(_WRAP_UP.search(text or ""))
@@ -88,6 +130,13 @@ def carried_tier(policy, question: str, floor: str | None) -> str:
     an integrations question after a 2FA question was held to approved security sentences)."""
     own = policy.question_tier(question)
     return max_tier(floor or "low", own) if own == "low" else own
+
+
+SMALL_TALK_SYSTEM = """You are {name}, HiBob's AI sales assistant on a live demo call. The prospect just said
+something social (a greeting, "how are you", thanks, or a question about you). Reply like a friendly professional, in
+one or two short sentences: answer naturally (you are an AI assistant if asked), say nothing about HiBob's product,
+features, prices or customers, and invite them back to the demo with one short question. Use their name if they gave it.
+Reply with JSON only: {{"reply": "<your reply>", "qualification": {{"name": "", "company": ""}}}}"""
 
 
 def fixed_answer(config: dict, question: str) -> dict | None:
@@ -212,7 +261,7 @@ class DemoAgent:
                 seen.add(c)
                 ordered.append(c)
         return {
-            "reply": str(data.get("reply", "")),
+            "reply": strip_cites(str(data.get("reply", ""))),
             "claims": claims,
             "citations": [c for c in ordered if c in self.ids],
             "invalid_citations": [c for c in ordered if c not in self.ids],
@@ -242,6 +291,8 @@ class DemoAgent:
             turn["timing"] = {"streamed": False, "filler": False, "first_words_s": 0, "first_sentence_s": 0,
                               "total_s": 0}
             return turn
+        if is_small_talk(last):
+            return self._small_talk(history, lang)
         fixed = fixed_answer(self.config, last) if not asks_for_human(last) else None
         if fixed:
             turn = fixed_turn(fixed, self.ids)
@@ -306,6 +357,31 @@ class DemoAgent:
                        "build on an earlier answer, reuse these claims with the same source and quote, and do not "
                        "contradict them:\n" + facts)
         return system + ("\n\n" + self.policy.prompt_block(tier, question) if self.policy and tier else "")
+
+    def _small_talk(self, history, lang):
+        """A greeting or pleasantry: a short, friendly reply from the fast model, with no product claims; code
+        checks that, and a plain line replaces a reply that talks about the product (Pavlo, 9 Nov)."""
+        import time as _time
+        start = _time.perf_counter()
+        last = history[-1]["content"]
+        system = SMALL_TALK_SYSTEM.format(name=self.config.get("agent_name", "the HiBob assistant"))
+        r = self.llm.complete("agent_fast", system, history[-6:], meta={"chunks": [], "lang": lang, "small_talk": True})
+        data, _ = self._parse(r.text)
+        reply = strip_cites(str(data.get("reply", "")).strip())
+        product = re.compile(r"\b(?:bob|hibob|" + "|".join(re.escape(g.lower()) for g in self.glossary) + r")\b|\d", re.I) \
+            if self.glossary else re.compile(r"\b(?:bob|hibob)\b|\d", re.I)
+        sentences = [x for x in re.split(r"(?<=[.!?])\s+", reply) if x]
+        bad = (not reply or len(reply) > 320 or data.get("claims")
+               or any(product.search(x) and not x.rstrip().endswith("?") for x in sentences))
+        turn = wrap_up_turn([])
+        turn.update(reply=small_talk_fallback(last) if bad else reply, wrap_up=False, small_talk=True,
+                    qualification=data.get("qualification") if isinstance(data.get("qualification"), dict) else {},
+                    guard={"enabled": True, "retried": False, "fell_back": bool(bad), "composed": False},
+                    model_role="agent_fast")
+        took = round(_time.perf_counter() - start, 3)
+        turn["timing"] = {"streamed": False, "filler": False, "first_words_s": took, "first_sentence_s": took,
+                          "total_s": took}
+        return turn
 
     def _compose_matching(self, question):
         """Both drafts failed: answer with the approved text whose trigger phrases match the question.

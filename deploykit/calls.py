@@ -19,7 +19,7 @@ from pathlib import Path
 
 import copy
 
-from deploykit.agent import DemoAgent, asks_for_human, fixed_answer, is_wrap_up
+from deploykit.agent import DemoAgent, asks_for_human, fixed_answer, is_question, is_small_talk, is_wrap_up
 from deploykit.judge import CallJudge, Judge, session_verdict
 from deploykit.llm import CostTracker, TrackedLLM
 from deploykit.risk import max_tier
@@ -116,13 +116,15 @@ class RepeatTracker:
         return bool(a) and bool(b) and len(a & b) / len(a | b) >= 0.8
 
     def lookup(self, text: str):
-        if asks_for_human(text) or is_wrap_up(text):
+        # Only a real question repeats: "yes", "ok" or "hi" twice are answers or pleasantries (Pavlo, 9 Nov: "yes"
+        # twice replayed the previous reply).
+        if asks_for_human(text) or is_wrap_up(text) or is_small_talk(text) or not is_question(text):
             return None
         k = self.key(text)
         return next((e for e in self.seen if self._same(e["key"], k)), None)
 
     def record(self, text: str, turn: dict) -> None:
-        if turn.get("handoff") or turn.get("wrap_up"):
+        if turn.get("handoff") or turn.get("wrap_up") or turn.get("small_talk") or not is_question(text):
             return
         self.seen.append({"key": self.key(text), "turn": copy.deepcopy(turn), "parked": bool(turn.get("park"))})
 

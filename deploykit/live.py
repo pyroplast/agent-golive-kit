@@ -155,11 +155,12 @@ class LiveAgent(DemoAgent):
                     skipped += 1
                 return False
             if say.endswith("?") and not c:
-                held.append(say)
+                held.append(mini["reply"])
                 return False
             if first_at is None and self.clock() - t0 > FILLER_AFTER_S and not filler_sent.is_set():
                 filler_sent.set()
                 self._emit("typing", "", t0)
+            say = mini["reply"]  # without [chunk#n] markers
             for h in held:  # a question that came before an answer keeps its place
                 said.append(h)
                 self._emit("say", h, t0)
