@@ -83,13 +83,13 @@ def test_declining_then_answering_is_graded_over_cautious():
     out = CallJudge(Fixed({"contradictions": [{"turns": [4, 5], "detail": "x", "evidence": [
         {"turn": 4, "quote": "I can't confirm that"}, {"turn": 5, "quote": "turn AI features off"}]}]})
     ).score({"profile": {}}, TURNS)
-    assert out["contradictions"][0]["kind"] == "declined_then_answered"
+    assert out["contradictions"][0]["kind"] == "declined_once"
 
 
 def test_call_verdict_blocks_only_on_opposite_contradictions():
-    cj = {"contradictions": [{"turns": [4, 5], "kind": "declined_then_answered"}]}
+    cj = {"contradictions": [{"turns": [4, 5], "kind": "declined_once"}]}
     v = call_verdict([turn(4, "x"), turn(5, "y")], parked=[], call_judge=cj)
-    assert v["reasons"] == ["declined_then_answered"] and v["failure_kind"] == "over_cautious"
+    assert v["reasons"] == ["declined_once"] and v["failure_kind"] == "over_cautious"
     cj = {"contradictions": [{"turns": [1, 3], "kind": "opposite"}]}
     v = call_verdict([turn(1, "x"), turn(3, "y")], parked=[], call_judge=cj)
     assert "contradiction" in v["reasons"] and v["failure_kind"] == "unsafe"
@@ -110,7 +110,7 @@ def _row(cid, contradictions=(), unsafe_high_turn=None):
 
 def test_gate_lists_blocking_findings_with_ids():
     rows = [_row("a", [{"turns": [1, 3], "kind": "opposite", "detail": "d"},
-                       {"turns": [2, 3], "kind": "declined_then_answered", "detail": "e"}]),
+                       {"turns": [2, 3], "kind": "declined_once", "detail": "e"}]),
             _row("b", unsafe_high_turn=2)]
     g = summarize_calls(rows)["gate"]
     assert g["passed"] is False and g["contradictions"] == 1 and g["over_cautious_contradictions"] == 1

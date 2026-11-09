@@ -192,7 +192,7 @@ class CallJudge:
             ev_turns = [e["turn"] for e in c["evidence"]]
             declined = any(_declined(by_turn[n]["agent"]) for n in ev_turns)
             kept.append({**c, "turns": sorted(set(ev_turns)),
-                         "kind": "declined_then_answered" if declined else "opposite"})
+                         "kind": "declined_once" if declined else "opposite"})
         return {"contradictions": kept, "dropped": dropped, "qualification": data.get("qualification") or {},
                 "notes": str(data.get("notes", "")), "judge_error": False}
 

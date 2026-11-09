@@ -184,7 +184,7 @@ LABELS = {"hr_lead": "HR lead", "cfo": "CFO", "it_admin": "IT admin",
           "missed_park": "Didn't offer to add the question to the list",
           "forbidden_phrase": "Said something a regression test forbids", "regression": "Regression", "number_not_in_source": "Number not in a quoted source",
           "watch_word": "Risky wording not in a quote", "quote_not_found": "Quote not found in its source",
-          "unknown_source": "Cited a source that doesn't exist", "empty_reply": "Empty reply", "no_claims": "Answer with no quoted claims", "unsupported_name": "Named something not in the sources", "uncited": "Facts without a cited source", "bad_handoff": "Questionable handoff", "contradiction": "Contradicted itself across turns", "no_recap": "Ended without recapping the open questions", "call_judge_error": "Call judge output unreadable"}
+          "unknown_source": "Cited a source that doesn't exist", "empty_reply": "Empty reply", "no_claims": "Answer with no quoted claims", "unsupported_name": "Named something not in the sources", "uncited": "Facts without a cited source", "bad_handoff": "Questionable handoff", "contradiction": "Contradicted itself across turns", "declined_once": "Answered in one turn, declined in another", "no_recap": "Ended without recapping the open questions", "call_judge_error": "Call judge output unreadable"}
 
 
 def _label(k):

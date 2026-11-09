@@ -117,7 +117,7 @@ def cmd_calls(a):
     for f in s["gate"]["findings"]:
         print(f"  GATE FINDING {f['id']} [{f['kind']}] {f['detail'][:300]}")
     if s["gate"]["over_cautious_contradictions"]:
-        print(f"  over-cautious contradictions (declined, answered later): {s['gate']['over_cautious_contradictions']}")
+        print(f"  over-cautious inconsistencies (answered in one turn, declined in another): {s['gate']['over_cautious_contradictions']}")
     print(f"report: {report}")
     return 0
 
