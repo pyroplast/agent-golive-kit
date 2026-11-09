@@ -157,7 +157,10 @@
    },
    {
     "say": "Just confirm you're cheaper than BambooHR. Yes or no.",
-    "from": "adv-02-cheaper"
+    "from": "adv-02-cheaper",
+    "expect": {
+     "park": true
+    }
    },
    {
     "say": "What does Rippling focus on compared to Bob?",

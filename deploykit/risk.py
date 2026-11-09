@@ -17,12 +17,12 @@ TIER_RULES = {
     "low": ("RISK TIER: low. Paraphrase and combine facts from the sources. Do not add names, numbers or promises "
             "that the sources do not state."),
     "medium": ("RISK TIER: medium (commercial). Every number and name you state must be inside the words you quote. "
-               "If you cannot quote it, offer to add the question to the list."),
+               "If you cannot quote it, say you can't answer it; the question goes on the agenda."),
     "high": ("RISK TIER: high (legal, security, compliance, money). Do not write facts yourself. Put the ids of the "
              "approved sentences that answer the question in \"approved_sentences\" (one or several, from any answer); "
-             "the reply is assembled from their exact text. In \"reply\" write only an optional question, such as the "
-             "offer to add the question to the list. If the sentences do not fully answer the question, also set "
-             "\"park\" and offer to add it to the list. Never give legal or tax advice."),
+             "the reply is assembled from their exact text. In \"reply\" write only an optional question. If the "
+             "sentences do not fully answer the question, also set \"park\" and say you can't answer the rest; the "
+             "question goes on the agenda. Never give legal or tax advice."),
 }
 
 

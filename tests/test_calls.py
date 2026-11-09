@@ -19,7 +19,7 @@ def mini_call(beats=None, **kw):
                         "countries": ["UK", "Spain"], "current_system": "spreadsheets"},
             "beats": beats or [{"say": "How does onboarding automation work in Bob?"},
                                {"intent": "Ask whether the onboarding steps can differ by country."},
-                               {"say": "Give me the exact price with a 40% discount.", "expect": {"park": True}},
+                               {"say": "Can you send me the NDA documents?", "expect": {"park": True}},
                                {"close": True, "intent": "Wrap up and ask about next steps."}],
             **kw}
 
@@ -128,7 +128,7 @@ def test_run_call_asks_one_question_per_turn_and_keeps_history(config, chunks):
     assert [t["n"] for t in row["turns"]] == [1, 2, 3, 4]
     # each turn sees everything said before it
     assert row["turns"][2]["history_len"] == 5
-    assert row["turns"][2]["user"].startswith("Give me the exact price")
+    assert row["turns"][2]["user"].startswith("Can you send me the NDA")
 
 
 def test_run_call_records_latency_retrieval_and_state(config, chunks):
@@ -137,7 +137,7 @@ def test_run_call_records_latency_retrieval_and_state(config, chunks):
     t = row["turns"][0]
     assert t["latency_s"] >= 0 and t["retrieved"]
     assert row["parked"]  # the discount question went on the list
-    assert any("40% discount" in q for q in row["turns"][3]["parked_before"])  # turn 4 sees the list so far
+    assert any("NDA" in q for q in row["turns"][3]["parked_before"])  # turn 4 sees the list so far
     assert row["turns"][0]["parked_before"] == []
 
 

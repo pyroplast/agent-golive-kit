@@ -67,7 +67,7 @@ def test_sentences_stream_and_are_checked_one_by_one(config, pricing_chunks):
     clock = Clock()
     lines = [GOOD, {"say": "Which countries do you employ people in?", "claims": []},
              {"end": True, "kind": "answer"}]
-    t = ask(live(config, pricing_chunks, StreamLLM(lines, clock), clock), "How is pricing calculated?")
+    t = ask(live(config, pricing_chunks, StreamLLM(lines, clock), clock), "How is the onboarding set up?")
     assert t["reply"] == "Bob's pricing is quote-based. Which countries do you employ people in?"
     assert t["citations"] == ["pricing#1"]
     tm = t["timing"]
@@ -82,10 +82,10 @@ def test_a_failing_later_sentence_is_skipped_and_the_question_parked(config, pri
     bad = {"say": "It costs $9 per employee.", "claims": []}
     lines = [GOOD, bad, {"say": "Which countries are you in?", "claims": []}, {"end": True}]
     llm = StreamLLM(lines, clock)
-    t = ask(live(config, pricing_chunks, llm, clock), "How is pricing calculated?")
-    assert t["reply"].startswith("Bob's pricing is quote-based.") and t["reply"].endswith(SAFE_TAIL)
-    assert "$9" not in t["reply"] and "Which countries are you in?" in t["reply"]
-    assert t["park"] == "How is pricing calculated?" and t["guard"]["skipped"] == 1
+    t = ask(live(config, pricing_chunks, llm, clock), "How is the onboarding set up?")
+    # the question to the buyer comes after the "can't confirm" line (Pavlo, 9 Nov)
+    assert t["reply"] == f"Bob's pricing is quote-based. {SAFE_TAIL} Which countries are you in?"
+    assert t["park"] == "How is the onboarding set up?" and t["guard"]["skipped"] == 1
     assert llm.completes == 0  # what was already said stays said: no rewrite
 
 
@@ -93,7 +93,7 @@ def test_a_failing_first_sentence_is_skipped_if_a_later_one_passes(config, prici
     clock = Clock()
     lines = [{"say": "It costs $9 per employee.", "claims": []}, GOOD, {"end": True}]
     llm = StreamLLM(lines, clock)
-    t = ask(live(config, pricing_chunks, llm, clock), "How is pricing calculated?")
+    t = ask(live(config, pricing_chunks, llm, clock), "How is the onboarding set up?")
     assert llm.completes == 0 and "$9" not in t["reply"] and "quote-based" in t["reply"]
 
 
@@ -105,27 +105,29 @@ def test_the_agent_does_not_see_its_own_filler_lines(config, pricing_chunks):
         def stream(self, role, system, messages, meta=None):
             seen.append(messages)
             return super().stream(role, system, messages, meta)
-    history = [{"role": "user", "content": "Hi"}, {"role": "assistant", "content": FILLER + " Welcome!"},
-               {"role": "user", "content": "How is pricing calculated?"}]
+    old = "Good question, let me check that properly."  # replies from before the typing dots
+    history = [{"role": "user", "content": "Hi"}, {"role": "assistant", "content": old + " Welcome!"},
+               {"role": "user", "content": "How is the onboarding set up?"}]
     live(config, pricing_chunks, Spy([GOOD, {"end": True}], clock), clock).respond(history, "en")
-    assert FILLER not in json.dumps(seen[0])
+    assert old not in json.dumps(seen[0])
 
 
 def test_a_failing_first_sentence_takes_the_slow_path_with_a_filler(config, pricing_chunks):
     clock = Clock()
     llm = StreamLLM([{"say": "It costs $9 per employee.", "claims": []}, {"end": True}], clock)
-    t = ask(live(config, pricing_chunks, llm, clock), "How is pricing calculated?")  # nothing passes
+    t = ask(live(config, pricing_chunks, llm, clock), "How is the onboarding set up?")  # nothing passes
     assert llm.completes >= 1 and t["guard"]["slow_path"] is True
-    assert t["reply"].startswith(FILLER) and "$9" not in t["reply"]
-    assert t["timing"]["filler"] is True and t["timing"]["first_words_s"] <= 1.5
+    assert "$9" not in t["reply"] and "let me check" not in t["reply"].lower()
+    assert t["timing"]["filler"] is True  # typing dots while the slow path runs
 
 
 def test_a_slow_first_sentence_gets_the_filler_at_the_threshold(config, pricing_chunks):
     clock = Clock()
     llm = StreamLLM([GOOD, {"end": True}], clock, first_delay=3.0)
-    t = ask(live(config, pricing_chunks, llm, clock), "How is pricing calculated?")
-    assert t["timing"]["filler"] is True and t["timing"]["first_words_s"] == 1.5
-    assert t["timing"]["first_sentence_s"] > 3.0 and t["reply"].startswith(FILLER)
+    t = ask(live(config, pricing_chunks, llm, clock), "How is the onboarding set up?")
+    assert t["timing"]["filler"] is True  # typing dots, not a sentence
+    assert t["timing"]["first_words_s"] == t["timing"]["first_sentence_s"] > 3.0
+    assert t["reply"] == GOOD["say"]
 
 
 def test_easy_turns_use_the_fast_model_and_risky_ones_the_big_model(config, pricing_chunks):
@@ -255,5 +257,5 @@ def test_live_format_asks_for_evidence_before_each_sentence():
 def test_claims_first_lines_parse(config, pricing_chunks):
     clock = Clock()
     line = {"claims": [{"source": "pricing#1", "quote": "Pricing is quote-based"}], "say": "Pricing is quote-based."}
-    t = ask(live(config, pricing_chunks, StreamLLM([line, {"end": True}], clock), clock), "How is pricing set?")
+    t = ask(live(config, pricing_chunks, StreamLLM([line, {"end": True}], clock), clock), "How is the onboarding set up?")
     assert t["reply"] == "Pricing is quote-based." and t["citations"] == ["pricing#1"]

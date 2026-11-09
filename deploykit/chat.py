@@ -10,7 +10,9 @@ import json
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from deploykit.calls import call_names
+import re
+
+from deploykit.calls import RepeatTracker, _FROM, _INTRO, call_names
 from deploykit.judge import Judge
 from deploykit.live import LiveAgent
 from deploykit.risk import max_tier
@@ -26,6 +28,8 @@ class ChatSession:
         self.history, self.parked, self.ledger = [], [], []
         self.floor, self.tier, self.turn_no, self.ended = None, None, 0, False
         self.agent.context_names = set()
+        self.repeats = RepeatTracker(self.config)
+        self.buyer = {}  # what the agent learned about the buyer, shown above the question list
 
     def ask(self, text: str, on_event=None) -> dict:
         self.history.append({"role": "user", "content": text})
@@ -38,11 +42,17 @@ class ChatSession:
                 on_event(e)
         self.agent.on_event = listen
         start = time.perf_counter()
+        seen = self.repeats.lookup(text)
         try:
-            t = self.agent.respond(list(self.history), "en", parked=list(self.parked), floor=self.floor,
-                                   ledger=list(self.ledger))
+            if seen:
+                t = self.repeats.repeat(seen, text)
+            else:
+                t = self.agent.respond(list(self.history), "en", parked=list(self.parked), floor=self.floor,
+                                       ledger=list(self.ledger))
+                self.repeats.record(text, t)
         finally:
             self.agent.on_event = None
+        self._learn(text, t)
         if not any(e["type"] == "say" for e in heard):  # e.g. the wrap-up, written by code in one piece
             listen({"type": "say", "text": t["reply"], "t": round(time.perf_counter() - start, 3)})
         self.turn_no += 1
@@ -64,6 +74,16 @@ class ChatSession:
         return t
 
 
+    def _learn(self, text: str, t: dict) -> None:
+        if "name" not in self.buyer and _INTRO.search(text):
+            self.buyer["name"] = _INTRO.search(text).group(1)
+        if "company" not in self.buyer and _FROM.search(text):
+            self.buyer["company"] = _FROM.search(text).group(1)
+        for k, v in (t.get("qualification") or {}).items():
+            if isinstance(v, (str, int, float)) and str(v).strip():
+                self.buyer[k] = str(v).strip()
+
+
 def turn_summary(t: dict, s: ChatSession, chunks) -> dict:
     by_id = {c.id: c for c in chunks}
     g = t.get("guard") or {}
@@ -72,7 +92,8 @@ def turn_summary(t: dict, s: ChatSession, chunks) -> dict:
     return {
         "n": t.get("n"), "reply": t["reply"], "tier": t.get("tier"), "model": t.get("model_role", "agent"),
         "timing": t.get("timing") or {}, "handoff": bool(t.get("handoff")), "park": t.get("park"),
-        "wrap_up": bool(t.get("wrap_up")),
+        "wrap_up": bool(t.get("wrap_up")), "fixed": t.get("fixed"), "repeat": bool(t.get("repeat")),
+        "buyer": dict(s.buyer),
         "guard": {"slow_path": bool(g.get("slow_path")), "skipped": g.get("skipped", 0),
                   "approved_answer": g.get("approved_substitute") or t.get("approved_answer") or [],
                   "retried": bool(g.get("retried")), "safe_reply": bool(g.get("fell_back")),
@@ -148,7 +169,7 @@ def serve(app: ChatApp, port: int = 8765):
 
 
 PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>HiBob sales agent · try it live</title>
+<title>HiBob sales agent</title>
 <style>
 :root{--ink:#15181d;--mute:#5b6169;--line:#e1dfd8;--bg:#f7f6f2;--blue:#2a78d6;--blued:#1d5fae;--ora:#eb6834}
 *{box-sizing:border-box}body{margin:0;font:15px/1.5 Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--ink)}
@@ -161,7 +182,10 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 400px;height:calc(100vh - 
 .msg{max-width:78%;padding:10px 14px;border-radius:14px;white-space:pre-wrap}
 .you{align-self:flex-end;background:var(--ink);color:#fff;border-bottom-right-radius:4px}
 .bot{align-self:flex-start;background:#fff;border:1px solid var(--line);border-bottom-left-radius:4px}
-.bot .filler{color:var(--mute);font-style:italic}.meta{font-size:12px;color:var(--mute);margin-top:6px}
+.bot .filler{color:var(--mute);font-style:italic}
+.typing{display:inline-flex;gap:5px;padding:4px 2px}.typing i{width:7px;height:7px;border-radius:50%;background:#9aa0a8;animation:blink 1.2s infinite ease-in-out}
+.typing i:nth-child(2){animation-delay:.2s}.typing i:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}.meta{font-size:12px;color:var(--mute);margin-top:6px}
 .chips{display:flex;flex-wrap:wrap;gap:8px;padding:0 22px 10px}.chips button{font-size:13px;padding:5px 10px;border-radius:999px}
 form{display:flex;gap:10px;padding:14px 22px;border-top:1px solid var(--line);background:#fff}
 form input{flex:1;font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:10px}
@@ -173,7 +197,7 @@ aside h2{font-size:14px;letter-spacing:.06em;text-transform:uppercase;color:var(
 h3{font-size:13px;margin:18px 0 6px}ul{margin:0;padding-left:18px;font-size:13px}a{color:var(--blued)}
 .empty{color:var(--mute);font-size:13px}.ended{color:var(--ora);font-weight:600;padding:0 22px 8px}
 </style></head><body>
-<header><div><h1>HiBob sales agent · try it live</h1><div class="sub">You are the buyer on a demo call. Answers come only from public hibob.com pages.</div></div>
+<header><div><h1>HiBob sales agent</h1><div class="sub">You are the buyer on a demo call. Answers come only from public hibob.com pages.</div></div>
 <div class="sp"></div><label style="font-size:13px"><input type="checkbox" id="judge"> Judge each reply</label>
 <button id="new">New call</button></header>
 <main><section id="chat"><div id="log"></div><div id="ended" class="ended"></div>
@@ -181,7 +205,7 @@ h3{font-size:13px;margin:18px 0 6px}ul{margin:0;padding-left:18px;font-size:13px
 <form id="f"><input id="q" placeholder="Ask a question, like a buyer on a call..." autocomplete="off" autofocus><button class="primary">Send</button></form></section>
 <aside><h2>Under the hood</h2><div id="hood"><p class="empty">Ask something to see how the reply was made: risk level, timing, checks, sources and the question list.</p></div></aside></main>
 <script>
-const SAMPLES=["Hi, I'm Alex, Head of People at Lumen Studios, 300 people in the UK and Spain. Is Bob a fit?","Which security certifications do you have?","Are you HIPAA certified?","Give me the exact price with a 40% discount.","Do you integrate with Workday?","Can we switch the AI off?","Earlier you mentioned where data is hosted. Can you repeat that?","Thanks, I need to wrap up. What happens next?","Put me through to a sales rep please."];
+const SAMPLES=["What are we doing here?","Hi, I'm Alex, Head of People at Lumen Studios, 300 people in the UK and Spain. Is Bob a fit?","Which security certifications do you have?","Are you HIPAA certified?","Give me the exact price with a 40% discount.","Do you integrate with Workday?","Can we switch the AI off?","Earlier you mentioned where data is hosted. Can you repeat that?","Thanks, I need to wrap up. What happens next?","Put me through to a sales rep please."];
 const log=document.getElementById('log'),hood=document.getElementById('hood'),q=document.getElementById('q');
 SAMPLES.forEach(s=>{const b=document.createElement('button');b.type='button';b.textContent=s.length>44?s.slice(0,42)+'…':s;b.title=s;b.onclick=()=>send(s);document.getElementById('chips').appendChild(b)});
 function el(t,c,txt){const e=document.createElement(t);if(c)e.className=c;if(txt!=null)e.textContent=txt;return e}
@@ -193,22 +217,25 @@ async function send(text){if(!text.trim())return;q.value='';log.appendChild(el('
  const rd=r.body.getReader(),dec=new TextDecoder();let buf='';
  for(;;){const {value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;
   while((i=buf.indexOf('\n'))>=0){const line=buf.slice(0,i);buf=buf.slice(i+1);if(!line.trim())continue;const e=JSON.parse(line);
-   if(e.type==='say'||e.type==='filler'){if(first===null)first=(performance.now()-t0)/1000;const s=el('span',e.type==='filler'?'filler':'',e.text+' ');body.appendChild(s)}
+   if(e.type==='typing'){if(first===null&&!bot.querySelector('.typing')){const d=el('span','typing');d.innerHTML='<i></i><i></i><i></i>';body.appendChild(d)}}
+   else if(e.type==='say'){const d=bot.querySelector('.typing');if(d)d.remove();if(first===null)first=(performance.now()-t0)/1000;body.appendChild(el('span','',e.text+' '))}
    else if(e.type==='error'){body.appendChild(el('span','filler','Error: '+e.text))}
-   else if(e.type==='done'){const tm=e.turn.timing||{};bot.appendChild(el('div','meta',`first words ${first!==null?first.toFixed(1):'?'}s · done ${((performance.now()-t0)/1000).toFixed(1)}s`));showHood(e.turn)}
+   else if(e.type==='done'){const d=bot.querySelector('.typing');if(d)d.remove();const tm=e.turn.timing||{};bot.appendChild(el('div','meta',`first words ${first!==null?first.toFixed(1):'?'}s · done ${((performance.now()-t0)/1000).toFixed(1)}s`));showHood(e.turn)}
    log.scrollTop=log.scrollHeight}}}
 function row(k,v){return `<div class="row"><span>${k}</span><span>${v}</span></div>`}
 function showHood(t){const g=t.guard,tm=t.timing||{};let h='';
  h+=row('Turn',t.n)+row('Risk level',t.tier?`<span class="tag ${t.tier}">${t.tier}</span>`:'off')+row('Model',t.model==='agent'?'Qwen3-235B':'Qwen3-30B (fast)');
- h+=row('First words',tm.first_words_s!=null?tm.first_words_s.toFixed(2)+' s':'-')+row('Reply finished',tm.total_s!=null?tm.total_s.toFixed(2)+' s':'-')+row('Filler line',tm.filler?'yes':'no');
- let path=t.wrap_up?'wrap-up written by code':g.slow_path?'slow path (draft, check, retry)':g.approved_answer.length?'client-approved answer: '+g.approved_answer.join(', '):g.skipped?g.skipped+' sentence(s) dropped by the guard':'every sentence passed';
+ h+=row('First words',tm.first_words_s!=null?tm.first_words_s.toFixed(2)+' s':'-')+row('Reply finished',tm.total_s!=null?tm.total_s.toFixed(2)+' s':'-')+row('Typing dots shown',tm.filler?'yes (over 1.5 s)':'no');
+ let path=t.repeat?'same question as before: same answer'+(t.park?', now on the agenda':''):t.fixed?'fixed reply ('+t.fixed+')':t.wrap_up?'wrap-up written by code':g.slow_path?'slow path (draft, check, retry)':g.approved_answer.length?'client-approved answer: '+g.approved_answer.join(', '):g.skipped?g.skipped+' sentence(s) dropped by the guard':'every sentence passed';
  if(g.safe_reply)path+=', then the safe reply';h+=row('Guard',esc(path));
- if(t.handoff)h+=row('Handoff','yes: handed to a person');if(t.park)h+=row('Added to list','yes');
+ if(t.handoff)h+=row('Handoff','yes: handed to a person');if(t.park)h+=row('Added to the agenda','yes');
  if(g.problems.length)h+='<h3>What the guard blocked</h3><ul>'+g.problems.map(p=>`<li>${esc(p)}</li>`).join('')+'</ul>';
  h+='<h3>Sources quoted</h3>'+(t.sources.length?'<ul>'+t.sources.map(s=>`<li><a href="${esc(s.url)}" target="_blank">${esc(s.title)} › ${esc(s.heading)}</a> <span class="empty">[${esc(s.id)}]</span></li>`).join('')+'</ul>':'<p class="empty">none</p>');
  if(t.judge)h+='<h3>Judge (DeepSeek-V4-Pro)</h3>'+row('Grounded',t.judge.grounded?'yes':'<b style="color:#b34a1c">no</b>')+(t.judge.unsupported_claims&&t.judge.unsupported_claims.length?'<ul>'+t.judge.unsupported_claims.map(c=>`<li>${esc(c)}</li>`).join('')+'</ul>':'')+`<p class="empty">${esc(t.judge.notes||'')}</p>`;
  h+='<h3>Call memory</h3>'+row('Messages',t.memory.messages)+row('Facts already given',t.memory.facts)+row('Risk carried to next turn',t.memory.risk_carried||'none');
- h+='<h3>Question list for the HiBob team</h3>'+(t.parked.length?'<ol style="font-size:13px;padding-left:18px">'+t.parked.map(p=>`<li>${esc(p)}</li>`).join('')+'</ol>':'<p class="empty">empty</p>');
+ const B=t.buyer||{},L={name:'Name',company:'Company',company_size:'Employees',countries:'Countries',current_system:'Uses today',modules:'Interested in',timeline:'Timeline'};
+ h+='<h3>About the buyer</h3>'+(Object.keys(B).length?Object.keys(B).map(k=>row(L[k]||k,esc(B[k]))).join(''):'<p class="empty">nothing yet</p>');
+ h+='<h3>Question list for the sales representative</h3>'+(t.parked.length?'<ol style="font-size:13px;padding-left:18px">'+t.parked.map(p=>`<li>${esc(p)}</li>`).join('')+'</ol>':'<p class="empty">empty</p>');
  hood.innerHTML=h;document.getElementById('ended').textContent=t.handoff?'The call was handed to a person. Start a new call to continue.':''}
 document.getElementById('f').onsubmit=e=>{e.preventDefault();send(q.value)};
 fetch('/api/reset',{method:'POST',body:'{}'});  // opening the page always starts a new call

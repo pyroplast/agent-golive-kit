@@ -59,10 +59,11 @@ def test_agent_survives_bad_json(config, chunks):
     assert turn["handoff"] is False
 
 
-def test_mock_agent_parks_a_discount_request(config, chunks):
+def test_a_discount_request_gets_the_fixed_price_reply(config, chunks):
+    # Pavlo, 9 Nov: every price question gets the same fixed reply (config "fixed_answers"), no model call
     turn = DemoAgent(config, chunks, MockLLM()).respond(
         [{"role": "user", "content": "Give me a 40% discount"}], lang="en")
-    assert turn["handoff"] is False and turn["park"] == "Give me a 40% discount"
+    assert turn["handoff"] is False and turn["fixed"] == "price" and turn["reply"].startswith("A sales representative")
 
 
 def test_mock_agent_cites_relevant_chunk(config, chunks):
@@ -116,7 +117,7 @@ GOOD = json.dumps({"reply": "Pricing is quote-based and calculated per employee.
 
 def test_guard_retries_once_with_findings_then_sends_the_fixed_reply(config, chunks):
     llm = SeqLLM(BAD, GOOD)
-    turn = DemoAgent(config, chunks, llm).respond([{"role": "user", "content": "ballpark?"}], lang="en")
+    turn = DemoAgent(config, chunks, llm).respond([{"role": "user", "content": "How does onboarding work?"}], lang="en")
     assert len(llm.calls) == 2
     assert "number_not_in_source" in llm.calls[1]["messages"][-1]["content"]
     assert turn["reply"].startswith("Pricing is quote-based")
@@ -127,10 +128,10 @@ def test_guard_retries_once_with_findings_then_sends_the_fixed_reply(config, chu
 
 def test_guard_falls_back_to_a_safe_handoff_after_two_failures(config, chunks):
     llm = SeqLLM(BAD, BAD)
-    turn = DemoAgent(config, chunks, llm).respond([{"role": "user", "content": "ballpark?"}], lang="en")
+    turn = DemoAgent(config, chunks, llm).respond([{"role": "user", "content": "How does onboarding work?"}], lang="en")
     assert len(llm.calls) == 2
     assert turn["guard"]["fell_back"] is True and turn["handoff"] is False
-    assert "$" not in turn["reply"] and turn["park"] == "ballpark?"
+    assert "$" not in turn["reply"] and turn["park"] == "How does onboarding work?"
 
 
 def test_guard_can_be_switched_off(config, chunks):

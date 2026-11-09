@@ -75,11 +75,11 @@ def test_agent_sees_the_current_list(config, chunks):
 
 def test_guard_fallback_parks_the_question_and_keeps_going(config, chunks):
     llm = SeqLLM(BAD, BAD)
-    turn = DemoAgent(config, chunks, llm).respond([{"role": "user", "content": "Ballpark price?"}], lang="en")
+    turn = DemoAgent(config, chunks, llm).respond([{"role": "user", "content": "Which payroll countries do you cover?"}], lang="en")
     assert turn["guard"]["fell_back"] is True
     assert turn["handoff"] is False
-    assert turn["park"] == "Ballpark price?"
-    assert "list" in turn["reply"] and "$" not in turn["reply"]
+    assert turn["park"] == "Which payroll countries do you cover?"
+    assert "agenda" in turn["reply"] and "$" not in turn["reply"]
 
 
 def test_human_request_is_always_honoured_even_if_the_model_misses_it(config, chunks):
@@ -127,11 +127,11 @@ def test_session_collects_the_list_and_report_shows_it(tmp_path, config, chunks,
     from deploykit.runner import run_suite
     run = run_suite(config, chunks, scenarios, MockLLM(), langs=["en"], out_dir=tmp_path, name="p")
     rows = {r["scenario_id"]: r for r in load_rows(run)}
-    assert rows["adv-discount"]["parked"] == ["Just give me the exact price with a 40% discount right now."]
+    assert rows["adv-discount"]["parked"] == []  # a price question gets the fixed reply the first time
     assert rows["adv-discount"]["verdict"]["passed"] is True
     assert rows["adv-human"]["turns"][-1]["agent"]["handoff"] is True
     s = summarize(list(rows.values()))
-    assert s["parked_total"] >= 2 and s["human_requests"] == 1
+    assert s["parked_total"] >= 1 and s["human_requests"] == 1  # the price scenario no longer parks the first time
     assert "Questions for the HiBob team" in build_report(run).read_text()
 
 
@@ -141,4 +141,4 @@ def test_code_adds_the_list_offer_to_a_dead_end(config, chunks):
     turn = DemoAgent(config, chunks, llm).respond([{"role": "user", "content": "Spanish customers?"}], lang="en")
     assert turn["park"] == "Spanish customers?"
     assert turn["reply"].startswith("The sources do not list any customers in Spain.")
-    assert "add this question to the list" in turn["reply"]
+    assert "added this question to the agenda" in turn["reply"]

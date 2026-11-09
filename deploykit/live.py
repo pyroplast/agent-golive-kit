@@ -34,13 +34,16 @@ claim on its own line; if you cannot quote it, leave the sentence out. Only ques
 add a question to the list have "claims": [].
 At HIGH risk, do not write facts yourself: send one line per approved sentence instead: {{"approved": "<approved sentence id>"}}
 Put the most useful sentence first and keep it short. Two to four sentences in total.
-Last line: {{"end": true, "kind": "<answer | clarify | refuse>", "handoff": <true|false>, "handoff_reason": <string or null>, "unknown": <true|false>, "park": <the question or null>, "qualification": {{}}}}
+Last line: {{"end": true, "kind": "<answer | clarify | refuse>", "handoff": <true|false>, "handoff_reason": <string or null>, "unknown": <true|false>, "park": <the question or null>, "qualification": {{"company_size": "", "countries": "", "current_system": "", "modules": "", "timeline": ""}}}}
+In "qualification" fill only what the prospect has said in this call, in their words; leave the rest empty.
 No other text and no code fences. Each sentence is checked automatically before it is sent: one with a number,
 name or risky word that is not in its quote stops the reply."""
 
-FILLER = "Good question, let me check that properly."
-SAFE_TAIL = ("I'd rather not guess on the rest. Would you like me to add this question to the list to discuss "
-             "with a HiBob team member?")
+# No filler sentence: when the first words take longer than FILLER_AFTER_S, the chat shows typing dots instead
+# (Pavlo, 9 Nov), and the dots disappear as soon as the answer starts.
+FILLER = ""
+SAFE_TAIL = ("I can't confirm the rest from HiBob's material. I have added this question to the agenda for the "
+             "discussion with the sales representative.")
 FILLER_AFTER_S = 1.5
 
 
@@ -63,12 +66,13 @@ class LiveAgent(DemoAgent):
         role = "agent_fast" if self.fast and pre_tier in (None, "low") else "agent"
         system = self._system(sources, parked, pre_tier, last_q, ledger).replace(OUTPUT_SPEC, LIVE_SPEC)
         # The agent never sees its own filler lines, or it starts copying them (calls-live-1 turn 6 said it twice).
-        history = [{**m, "content": m["content"].replace(FILLER, "").strip()} if m["role"] == "assistant" else m
-                   for m in history]
+        history = [{**m, "content": m["content"].replace("Good question, let me check that properly.", "").strip()}
+                   if m["role"] == "assistant" else m for m in history]
         replay = [{"role": m["role"], "content": json.dumps({"say": m["content"]}, ensure_ascii=False)}
                   if m["role"] == "assistant" else m for m in history]
 
         said, claims, approved_cites, end = [], [], [], {}
+        held = []  # questions to the prospect, said after the answer (and after a "can't confirm" line)
         tier, first_at, problems, failed, skipped = pre_tier, None, [], None, 0
         skip_at = None  # where the first dropped sentence would have been said
         buf, stop = "", False
@@ -80,7 +84,7 @@ class LiveAgent(DemoAgent):
             def _filler():
                 if first_at is None and not filler_sent.is_set():
                     filler_sent.set()
-                    self._emit("filler", FILLER, t0)
+                    self._emit("typing", "", t0)
             timer = threading.Timer(FILLER_AFTER_S, _filler)
             timer.start()
 
@@ -133,6 +137,16 @@ class LiveAgent(DemoAgent):
                 elif not substitute:
                     skipped += 1
                 return False
+            if say.endswith("?") and not c:
+                held.append(say)
+                return False
+            if first_at is None and self.clock() - t0 > FILLER_AFTER_S and not filler_sent.is_set():
+                filler_sent.set()
+                self._emit("typing", "", t0)
+            for h in held:  # a question that came before an answer keeps its place
+                said.append(h)
+                self._emit("say", h, t0)
+            held.clear()
             said.append(say)
             self._emit("say", say, t0)
             claims.extend(c)
@@ -152,31 +166,40 @@ class LiveAgent(DemoAgent):
 
         if timer:
             timer.cancel()
+        if held and not said and not skipped:  # only questions: say them now
+            for h in held:
+                said.append(h)
+                self._emit("say", h, t0)
+            held.clear()
+            first_at = self.clock() - t0
 
-        if not said:  # the first sentence failed, or nothing usable came back: slow path behind a filler
+        if not said and not held:  # the first sentence failed, or nothing usable came back: slow path
             filler_at = min(self.clock() - t0, FILLER_AFTER_S)
             if not filler_sent.is_set():
                 filler_sent.set()
-                self._emit("filler", FILLER, t0)
+                self._emit("typing", "", t0)
             turn = DemoAgent._respond(self, history, lang, parked, floor, ledger)
             self._emit("say", turn["reply"], t0)
-            turn["reply"] = f"{FILLER} {turn['reply']}"
             turn["guard"] = {**turn.get("guard", {}), "streamed": True, "slow_path": True, "skipped": skipped,
                              "stream_problems": problems, "blocked_sentence": failed}
             turn["model_role"] = "agent"
-            turn["timing"] = {"streamed": True, "filler": True, "first_words_s": round(filler_at, 3),
+            turn["timing"] = {"streamed": True, "filler": True, "first_words_s": round(self.clock() - t0, 3),
                               "first_sentence_s": round(self.clock() - t0, 3), "total_s": round(self.clock() - t0, 3)}
             return turn
 
+        if first_at is None:  # only questions were left to say, after the "can't confirm" line
+            first_at = self.clock() - t0
         reply = " ".join(said)
         park = end.get("park")
         if skipped:
-            reply = f"{reply} {SAFE_TAIL}"
+            reply = f"{reply} {SAFE_TAIL}".strip()
             park = last_q or None
             self._emit("say", SAFE_TAIL, t0)
+        if held:
+            reply = " ".join([reply, *held]).strip()
+            for h in held:
+                self._emit("say", h, t0)
         filler = first_at > FILLER_AFTER_S
-        if filler:
-            reply = f"{FILLER} {reply}"
         kind = end.get("kind") or ("answer" if claims or approved_cites else "clarify")
         turn = self._to_turn({"reply": reply, "claims": claims, "kind": kind, "park": park,
                               "handoff": end.get("handoff", False), "handoff_reason": end.get("handoff_reason"),
@@ -197,6 +220,6 @@ class LiveAgent(DemoAgent):
                          "blocked_draft": failed}
         turn["model_role"] = role
         turn["timing"] = {"streamed": True, "filler": filler,
-                          "first_words_s": round(FILLER_AFTER_S if filler else first_at, 3),
+                          "first_words_s": round(first_at, 3),
                           "first_sentence_s": round(first_at, 3), "total_s": round(total, 3)}
         return turn

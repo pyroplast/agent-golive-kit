@@ -219,7 +219,7 @@ def test_call_judge_is_told_that_adding_detail_is_not_a_contradiction():
 def test_turn_judge_is_told_filler_and_recaps_are_not_claims():
     from deploykit.judge import JUDGE_SYSTEM
     p = JUDGE_SYSTEM.lower()
-    assert "let me check" in p and "recap" in p
+    assert "holding phrases" in p and "agenda" in p and "recap" in p
 
 
 def test_wrap_up_is_written_by_code_from_the_question_list(config, chunks):
@@ -231,7 +231,7 @@ def test_wrap_up_is_written_by_code_from_the_question_list(config, chunks):
                       "en", parked=["Can you host in the US?", "Do you integrate with Workday?"], floor="high")
     assert llm.agent_calls == []
     assert "Can you host in the US?" in t["reply"] and "Do you integrate with Workday?" in t["reply"]
-    assert "team member" in t["reply"] and t["tier"] == "low" and not t["handoff"] and t["park"] is None
+    assert "sales representative" in t["reply"] and t["tier"] == "low" and not t["handoff"] and t["park"] is None
     assert t["citations"] == [] and t["wrap_up"] is True
 
 

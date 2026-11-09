@@ -56,7 +56,7 @@ class MockLLM:
         last = messages[-1]["content"]
         low = last.lower()
         if any(t in low for t in PARK_TRIGGERS):
-            out = {"reply": "I can't give that here. Shall I add it to the list for a HiBob team member?",
+            out = {"reply": "I can't answer that here. I have added this question to the agenda for the discussion with the sales representative.",
                    "citations": [], "handoff": False, "handoff_reason": None, "park": last,
                    "unknown": False, "qualification": {}}
         else:
@@ -68,7 +68,7 @@ class MockLLM:
                        "handoff": False, "handoff_reason": None, "unknown": False,
                        "qualification": {}}
             else:
-                out = {"reply": "Our public material doesn't cover that. Shall I add it to the list for a HiBob team member?",
+                out = {"reply": "Our public material doesn't cover that. I have added this question to the agenda for the discussion with the sales representative.",
                        "citations": [], "handoff": False, "handoff_reason": None, "park": last,
                        "unknown": True, "qualification": {}}
         return json.dumps(out, ensure_ascii=False)

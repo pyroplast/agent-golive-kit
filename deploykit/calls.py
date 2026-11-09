@@ -17,7 +17,9 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
-from deploykit.agent import DemoAgent
+import copy
+
+from deploykit.agent import DemoAgent, asks_for_human, fixed_answer, is_wrap_up
 from deploykit.judge import CallJudge, Judge, session_verdict
 from deploykit.llm import CostTracker, TrackedLLM
 from deploykit.risk import max_tier
@@ -31,7 +33,7 @@ one question at a time. Do not repeat the agent's words back. Do not invent fact
 What to do in this message: {intent}"""
 
 STAGES = (("1-5", 1, 5), ("6-10", 6, 10), ("11-15", 11, 15))
-_RECAP = re.compile(r"\b(list|follow[- ]?up|follow you up|open questions?|get back to you|team member)\b", re.I)
+_RECAP = re.compile(r"\b(agenda|sales representative|list|follow[- ]?up|follow you up|open questions?|get back to you|team member)\b", re.I)
 UNSAFE_CALL_REASONS = {"contradiction", "call_judge_error"}
 _INTRO = re.compile(r"\b(?:I['’]m|I am|my name is|this is)\s+([A-Z][a-z]+)")
 _FROM = re.compile(r"\bfrom\s+([A-Z][\w&]*(?:\s+[A-Z][\w&]*)*)")
@@ -88,6 +90,52 @@ class CallBuyer:
         return beat["intent"] if not text or text.upper().startswith("DONE") else text
 
 
+_STOP = set("""a an the is are was were be do does did can could will would should you your we our us i me my it its
+this that these those of to in on for with and or but so if at by from about as any some what which who how please
+bob hibob""".split())
+
+
+class RepeatTracker:
+    """The same question gets the same answer, without a new model call, so it can't drift. The second time it is
+    asked it also goes on the agenda for the sales representative (Pavlo, 9 Nov). Price questions count as one
+    question, whatever the wording."""
+
+    def __init__(self, config: dict):
+        self.config, self.seen = config, []
+
+    def key(self, text: str):
+        f = fixed_answer(self.config, text)
+        if f:
+            return ("fixed", f["id"])
+        return frozenset(w for w in re.findall(r"[a-z0-9]+", (text or "").lower()) if w not in _STOP and len(w) > 1)
+
+    @staticmethod
+    def _same(a, b) -> bool:
+        if isinstance(a, tuple) or isinstance(b, tuple):
+            return a == b
+        return bool(a) and bool(b) and len(a & b) / len(a | b) >= 0.8
+
+    def lookup(self, text: str):
+        if asks_for_human(text) or is_wrap_up(text):
+            return None
+        k = self.key(text)
+        return next((e for e in self.seen if self._same(e["key"], k)), None)
+
+    def record(self, text: str, turn: dict) -> None:
+        if turn.get("handoff") or turn.get("wrap_up"):
+            return
+        self.seen.append({"key": self.key(text), "turn": copy.deepcopy(turn), "parked": bool(turn.get("park"))})
+
+    @staticmethod
+    def repeat(entry: dict, text: str) -> dict:
+        t = copy.deepcopy(entry["turn"])
+        t.update(repeat=True, park=None,
+                 timing={"streamed": False, "filler": False, "first_words_s": 0, "first_sentence_s": 0, "total_s": 0})
+        if not entry["parked"]:
+            t["park"], entry["parked"] = text, True
+        return t
+
+
 def turn_verdict(beat: dict, turn: dict) -> dict:
     expect = {"handoff": False, **(beat.get("expect") or {})}
     return session_verdict({"category": "call", "expect": expect}, [turn])
@@ -128,6 +176,7 @@ def run_call(call: dict, agent, judge, buyer, llm, call_judge=None, cost=None) -
     call_judge = call_judge or CallJudge(llm)
     history, turns, parked, tier, floor, ended = [], [], [], None, None, "complete"
     ledger = []  # facts the agent gave in passed turns, so it can repeat itself without rewording
+    repeats = RepeatTracker(agent.config)
     for n, beat in enumerate(call["beats"], 1):
         history.append({"role": "user", "content": buyer.message(call, beat, history)})
         if hasattr(agent, "context_names"):
@@ -135,7 +184,12 @@ def run_call(call: dict, agent, judge, buyer, llm, call_judge=None, cost=None) -
         parked_before = list(parked)
         retrieved = [c.id for c in agent.sources_for(history)] if agent.index is not None else ["(full kb)"]
         start = time.perf_counter()
-        a = agent.respond(history, "en", parked=list(parked), floor=floor, ledger=list(ledger))
+        seen = repeats.lookup(history[-1]["content"])
+        if seen:
+            a = repeats.repeat(seen, history[-1]["content"])
+        else:
+            a = agent.respond(history, "en", parked=list(parked), floor=floor, ledger=list(ledger))
+            repeats.record(history[-1]["content"], a)
         latency = round(time.perf_counter() - start, 3)
         if a.get("tier"):
             tier = max_tier(tier or "low", a["tier"])  # the highest stakes the call reached

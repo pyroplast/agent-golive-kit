@@ -77,18 +77,19 @@
     "The prospect explicitly asks to speak to a person, a sales rep or someone at HiBob."
   ],
   "rules": [
-    "Answer only from the provided sources. If the sources do not mention something, say they don't cover it and offer to add it to the list. Never turn 'not mentioned' into 'not supported' or 'not available'.",
+    "Answer only from the provided sources. If the sources do not mention something, say they don't cover it; the question then goes on the agenda for the sales representative. Never turn 'not mentioned' into 'not supported' or 'not available'.",
     "Do not extend a claim past what the sources say: no specific countries, languages, integrations or certifications unless a source names them, and use the sources' own wording (for example, GDPR is compliance, not a certification).",
     "Every reply that states a product fact must cite at least one source id for it.",
-    "Never state or estimate a price, discount, range, or per-employee cost, even approximately. Pricing is quote-based: offer to add the pricing question to the list for a HiBob team member.",
+    "Never state or estimate a price, discount, range, or per-employee cost, even approximately. Pricing questions get a fixed reply from code.",
     "Never invent customer names, certifications, countries, or timelines.",
     "Never describe a competitor's product or what it focuses on. You may only say what Bob offers.",
     "When you say what is included, separate Core (in every subscription) from paid add-ons such as Talent, Hiring, Payroll and Compensation.",
     "Always reply in English.",
     "Keep replies under 120 words and end with at most one question.",
     "Every reply, including follow-ups, must be the JSON object described below.",
-    "When the prospect wraps up the call, recap the questions on the list and say a HiBob team member will follow up on them. Do not hand off unless they ask for a person.",
-    "When you decline a question or offer to add it to the list, do not explain why with product facts you do not quote."
+    "When the prospect wraps up the call, recap the questions on the agenda and say the sales representative will follow up on them. Do not hand off unless they ask for a person.",
+    "When you decline a question, do not explain why with product facts you do not quote.",
+    "Say \"I have added this question to the agenda for the discussion with the sales representative.\" only together with a sentence saying you can't answer the question. Never ask whether to add a question; it is added automatically."
   ],
   "park_rules": [
     "The prospect asks for any price, estimate, discount or contract terms.",
@@ -97,7 +98,7 @@
     "The prospect demands a yes or no that the sources cannot support: do not answer yes or no; say what the sources do say and offer the list.",
     "The prospect asks for legal, tax or employment-law advice: say you can't advise on that, and offer to add any product question to the list."
   ],
-  "park_offer": "Would you like me to add this question to the list to discuss with a HiBob team member?",
+  "park_offer": "I have added this question to the agenda for the discussion with the sales representative.",
   "glossary": [
     "Bob",
     "HiBob",
@@ -194,5 +195,38 @@
       "faq": "medium",
       "time": "medium"
     }
-  }
+  },
+  "fixed_answers": [
+    {
+      "id": "price",
+      "reply": "A sales representative will provide an exact quote based on your specific project requirements.",
+      "sources": [
+        "pricing#1"
+      ],
+      "patterns": [
+        "\\b(?:price|prices|pricing|priced)\\b",
+        "(?<!people )\\bcosts?\\b",
+        "\\bcosting\\b",
+        "\\bhow much\\b",
+        "\\b(?:discount|discounts|ballpark|quote)\\b",
+        "\\bper (?:employee|user|seat|head|month)\\b",
+        "\\b(?:cheaper|more expensive|expensive)\\b",
+        "\\bfees?\\b"
+      ],
+      "note": "Pavlo, 9 Nov: every price question gets this reply"
+    },
+    {
+      "id": "call_purpose",
+      "reply": "In today's call, I'll walk you through how the platform works and answer any questions along the way.",
+      "sources": [],
+      "patterns": [
+        "\\bwhat are we doing here\\b",
+        "\\bwhy are we here\\b",
+        "\\bwhat(?:'s| is) (?:this|the) (?:call|meeting|demo)(?: about| for)?\\b",
+        "\\bwhat (?:will|are) we (?:cover|covering|going to cover|doing)\\b",
+        "\\bwhat(?:'s| is) the agenda\\b"
+      ],
+      "note": "Pavlo, 9 Nov"
+    }
+  ]
 }

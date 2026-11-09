@@ -158,11 +158,14 @@ def cmd_chat(a):
         print("AGENT: ", end="", flush=True)
 
         def show(e):
-            if e["type"] in ("say", "filler"):
+            if e["type"] == "say":
                 print(e["text"], end=" ", flush=True)
+            elif e["type"] == "typing":
+                print("…", end=" ", flush=True)
         t = s.ask(text, on_event=show)
         tm, g = t.get("timing") or {}, t.get("guard") or {}
-        how = ("wrap-up by code" if t.get("wrap_up") else "slow path" if g.get("slow_path") else
+        how = ("same question, same answer" if t.get("repeat") else f"fixed reply ({t['fixed']})" if t.get("fixed")
+               else "wrap-up by code" if t.get("wrap_up") else "slow path" if g.get("slow_path") else
                f"approved answer {g['approved_substitute']}" if g.get("approved_substitute") else
                f"{g.get('skipped')} sentence(s) dropped" if g.get("skipped") else "all sentences passed")
         print(f"\n   [tier {t.get('tier')} · first words {tm.get('first_words_s', 0):.1f}s · done "

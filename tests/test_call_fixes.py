@@ -88,7 +88,7 @@ def test_tier_carries_to_the_next_turn_only(config, chunks):
             "beats": [{"say": "Which security certifications do you have?"},
                       {"say": "Great, can you send me that report now?"},
                       {"say": "What add-on modules are there?"},
-                      {"say": "What add-on modules are there?"}]}
+                      {"say": "Which modules does Bob offer?"}]}
     row = run_call(call, agent, Judge(llm, chunks), CallBuyer(llm, config), llm)
     tiers = [t["agent"]["tier"] for t in row["turns"]]
     assert tiers[0] == "high" and tiers[1] == "high"  # a direct follow-up keeps the stakes of the question before

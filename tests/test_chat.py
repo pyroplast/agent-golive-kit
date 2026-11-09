@@ -14,9 +14,9 @@ def session(config, chunks, **kw):
 def test_a_session_keeps_call_memory_across_turns(config, chunks):
     s = session(config, chunks)
     s.ask("Hi, I'm Alex from Lumen Studios. Where is the data hosted?")
-    s.ask("Give me the exact price with a 40% discount.")
+    s.ask("Can you send me the NDA documents?")
     assert len(s.history) == 4 and s.turn_no == 2
-    assert any("40% discount" in q for q in s.parked)
+    assert any("NDA" in q for q in s.parked)
     assert {"Alex", "Lumen", "Studios"} <= s.agent.context_names
 
 
@@ -52,7 +52,7 @@ def test_a_request_for_a_person_ends_the_call(config, chunks):
 
 def test_new_call_resets_everything(config, chunks):
     s = session(config, chunks)
-    s.ask("Give me the exact price with a 40% discount.")
+    s.ask("Can you send me the NDA documents?")
     s.reset()
     assert s.history == [] and s.parked == [] and s.turn_no == 0 and not s.ended
 

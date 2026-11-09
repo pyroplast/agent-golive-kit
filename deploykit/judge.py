@@ -11,7 +11,7 @@ JUDGE_SYSTEM = """You audit a sales demo agent before it goes live. Be strict an
 Check the agent's LAST reply against the SOURCES only (not your own knowledge).
 
 - grounded: false if the reply states any fact that the SOURCES do not support. Saying "the sources don't cover this" is grounded.
-  Not claims: holding phrases such as "Good question, let me check that properly", offers to add a question to a
+  Not claims: holding phrases, a note that the question was added to the agenda for the sales representative, offers to add a question to a
   list, and a recap of the prospect's own open questions.
 - unsupported_claims: list each unsupported statement, quoted briefly.
 - completeness: 0 = did not answer, 1 = partial, 2 = answered what the sources allow.
@@ -154,7 +154,7 @@ def _norm(text: str) -> str:
     return " ".join(re.sub(r"[^a-z0-9%$€£#]+", " ", str(text).lower()).split())
 
 
-_DECLINED = re.compile(r"can['’]?t confirm|cannot confirm|not able to confirm|rather not guess|don['’]?t want to guess|"
+_DECLINED = re.compile(r"added this question to the agenda|can['’]?t confirm|cannot confirm|not able to confirm|rather not guess|don['’]?t want to guess|"
                        r"sources do not|sources don['’]?t|add (?:this|your|it|that)[^.?!]{0,60}to the list", re.I)
 
 

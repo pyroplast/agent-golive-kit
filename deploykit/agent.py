@@ -17,7 +17,7 @@ OUTPUT_SPEC = """Reply with ONE JSON object and nothing else:
  "handoff": <true if a human Account Executive should take over>,
  "handoff_reason": "<short reason or null>",
  "unknown": <true if the sources do not answer the question>,
- "park": "<the prospect's question, if you offer to add it to the list for a HiBob team member; otherwise null>",
+ "park": "<the prospect's question, if you can't answer it and it goes on the agenda for the sales representative; otherwise null>",
  "approved_sentences": ["<ids of approved sentences, high risk only>"],
  "qualification": {"<field>": "<value the prospect revealed>"}}
 kind: "answer" when the reply states anything about the product or company; "clarify" when it only asks the
@@ -34,8 +34,8 @@ Rewrite the reply. Keep only facts you can quote word for word from the sources,
 and remove any number or wording that is not in a quote. If you cannot support the answer, say so and hand off.
 Reply with the JSON object only."""
 
-FALLBACK_REPLY = ("I can't confirm that from HiBob's material, and I don't want to guess. Would you like me to add "
-                  "this question to the list to discuss with a HiBob team member? We can keep going in the meantime.")
+FALLBACK_REPLY = ("I can't confirm that from HiBob's material, and I don't want to guess. "
+                  "I have added this question to the agenda for the discussion with the sales representative.")
 
 HANDOFF_REPLY = "Of course. I'm handing you over to a HiBob team member now."
 
@@ -49,7 +49,7 @@ _HUMAN = [re.compile(p, re.I) for p in (
 )]
 
 
-_OFFER = re.compile(r"\badd\b[^.?!]{0,100}\bto (?:the|our|a|my) list\b", re.I)
+_OFFER = re.compile(r"\badd\b[^.?!]{0,100}\bto (?:the|our|a|my) list\b|\badded\b[^.?!]{0,60}\bto the agenda\b", re.I)
 _INLINE_CITE = re.compile(r"\[([A-Za-z0-9_-]+#\d+)\]")
 
 
@@ -76,13 +76,28 @@ def carried_tier(policy, question: str, floor: str | None) -> str:
     return max_tier(floor or "low", own) if own == "low" else own
 
 
+def fixed_answer(config: dict, question: str) -> dict | None:
+    """A reply the client fixed in advance (config "fixed_answers"), such as the one for every price question."""
+    for f in config.get("fixed_answers", []):
+        if any(re.search(p, question or "", re.I) for p in f["patterns"]):
+            return f
+    return None
+
+
+def fixed_turn(f: dict, ids) -> dict:
+    t = wrap_up_turn([])
+    t.update(reply=f["reply"], kind="answer", wrap_up=False, fixed=f["id"],
+             citations=[s for s in f.get("sources", []) if s in ids])
+    return t
+
+
 def wrap_up_turn(parked: list[str]) -> dict:
     """The closing reply, written by code: a recap of the question list and who follows up. No model call, so
     nothing new can be claimed at the end (calls-gate-2/3: the wrap-up inherited the high-risk level)."""
     if parked:
         items = " ".join(f"({i}) {q}" for i, q in enumerate(parked, 1))
-        reply = (f"Thanks for your time. Before we finish, these are the open questions I've added to the list: "
-                 f"{items}. A HiBob team member will follow up on them with you.")
+        reply = (f"Thanks for your time. Before we finish, these are the open questions on the agenda for the "
+                 f"discussion with the sales representative: {items}. The sales representative will follow up on them.")
     else:
         reply = "Thanks for your time. If anything else comes up, just ask here and I'll help."
     return {"reply": reply, "kind": "clarify", "claims": [], "citations": [], "invalid_citations": [],
@@ -124,8 +139,8 @@ Rules:
 Hand off to a human only when:
 {handoff}
 
-Do not hand off for anything else. Instead, offer to add the question to the list for a HiBob team member
-("{config.get('park_offer', '')}"), set "park" to the question, and keep the conversation going when:
+Do not hand off for anything else. Instead, say you can't answer it and add: "{config.get('park_offer', '')}"
+Set "park" to the question, and keep the conversation going, when:
 {park}
 
 Questions already on the list:
@@ -210,6 +225,12 @@ class DemoAgent:
         last = history[-1]["content"] if history and history[-1]["role"] == "user" else ""
         if is_wrap_up(last) and not asks_for_human(last):
             turn = wrap_up_turn(list(parked or []))
+            turn["timing"] = {"streamed": False, "filler": False, "first_words_s": 0, "first_sentence_s": 0,
+                              "total_s": 0}
+            return turn
+        fixed = fixed_answer(self.config, last) if not asks_for_human(last) else None
+        if fixed:
+            turn = fixed_turn(fixed, self.ids)
             turn["timing"] = {"streamed": False, "filler": False, "first_words_s": 0, "first_sentence_s": 0,
                               "total_s": 0}
             return turn

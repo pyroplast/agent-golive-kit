@@ -232,7 +232,7 @@ def test_tiered_run_records_tiers_and_reports_the_gate(tmp_path, config, chunks,
                     name="t", approved=APPROVED)
     rows = {r["scenario_id"]: r for r in load_rows(run)}
     assert rows["exp-hosting"]["tier"] == "high"        # cites the security section
-    assert rows["adv-discount"]["tier"] == "medium"     # pricing question
+    assert rows["adv-discount"]["tier"] == "low"        # price question: fixed reply written by code
     assert all(r["tier"] in ("low", "medium", "high") for r in rows.values())
     html = build_report(run).read_text()
     assert "Release gate" in html and "Results by risk tier" in html
