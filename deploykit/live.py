@@ -18,7 +18,15 @@ import json
 import threading
 import time
 
+import re
+
 from deploykit.agent import OUTPUT_SPEC, DemoAgent, carried_tier, is_question
+
+_REPEAT_ASK = re.compile(r"\b(?:repeat|again|remind|recap|summar|earlier you|you said|you mentioned)", re.I)
+
+
+def _norm(s: str) -> str:
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", str(s).lower()).split())
 from deploykit.guard import approved_sources
 from deploykit.risk import max_tier
 
@@ -73,6 +81,11 @@ class LiveAgent(DemoAgent):
 
         said, claims, approved_cites, end = [], [], [], {}
         held = []  # questions to the prospect, said after the answer (and after a "can't confirm" line)
+        # Facts already given in this call (source + quote). A sentence that only repeats them is left out, unless
+        # the prospect asked to hear it again (Pavlo, 9 Nov: the OKR facts came back after the buyer answered).
+        given = {(f.get("source"), _norm(f.get("quote", ""))) for f in ledger or []}
+        allow_repeat = bool(_REPEAT_ASK.search(last_q))
+        repeated = [0]
         tier, first_at, problems, failed, skipped = pre_tier, None, [], None, 0
         skip_at = None  # where the first dropped sentence would have been said
         buf, stop = "", False
@@ -114,6 +127,10 @@ class LiveAgent(DemoAgent):
             if not say:
                 return False
             c = [x for x in obj.get("claims") or [] if isinstance(x, dict)]
+            if c and given and not allow_repeat and all(
+                    (x.get("source"), _norm(x.get("quote", ""))) in given for x in c):
+                repeated[0] += 1
+                return False
             mini = self._to_turn({"reply": say, "claims": c, "kind": "answer" if c else "clarify"}, False)
             s_tier = (max_tier(pre_tier, self.policy.classify(last_q, mini["citations"], mini["claims"]))
                       if self.policy else None)
@@ -220,6 +237,7 @@ class LiveAgent(DemoAgent):
         total = self.clock() - t0
         turn["guard"] = {"enabled": True, "streamed": True, "retried": False, "fell_back": False, "composed": False,
                          "slow_path": False, "skipped": skipped + skipped_silently, "approved_substitute": substitute,
+                         "repeated": repeated[0],
                          "first_problems": problems, "final_problems": [],
                          "blocked_draft": failed}
         turn["model_role"] = role

@@ -199,3 +199,33 @@ def test_the_safe_reply_after_an_introduction_does_not_park(config, chunks):
     bad = {"reply": "Bob is used by 40,000 companies.", "kind": "answer", "claims": []}
     t = DemoAgent(CONFIG, chunks, SeqLLM([bad, bad])).respond([{"role": "user", "content": INTRO}], "en")
     assert t["park"] is None and "agenda" not in t["reply"] and "40,000" not in t["reply"]
+
+
+# --- the buyer answers the agent's question (Pavlo, 9 Nov) -------------------------------------------------------
+
+LEDGER = [{"turn": 2, "text": "Bob supports OKRs", "source": "pricing#1", "quote": "Pricing is quote-based"}]
+
+
+def test_a_fact_already_given_is_not_said_again(config, chunks):
+    from tests.test_live import GOOD, Clock, StreamLLM, live
+    clock = Clock()
+    lines = [{"claims": [], "say": "Got it, spreadsheets and manual work."}, GOOD,
+             {"claims": [], "say": "When do you want to be live?"}, {"end": True}]
+    t = live(CONFIG, chunks, StreamLLM(lines, clock), clock).respond(
+        [{"role": "user", "content": "just google spreadsheets and manual work from our hr"}], "en", ledger=LEDGER)
+    assert t["reply"] == "Got it, spreadsheets and manual work. When do you want to be live?"
+    assert t["guard"]["repeated"] == 1 and t["park"] is None and "agenda" not in t["reply"]
+
+
+def test_a_fact_is_repeated_when_the_buyer_asks_for_it(config, chunks):
+    from tests.test_live import GOOD, Clock, StreamLLM, live
+    clock = Clock()
+    t = live(CONFIG, chunks, StreamLLM([GOOD, {"end": True}], clock), clock).respond(
+        [{"role": "user", "content": "Can you repeat what you said about that?"}], "en", ledger=LEDGER)
+    assert "quote-based" in t["reply"]
+
+
+def test_prompt_says_to_acknowledge_an_answer_and_not_repeat_facts(config, chunks):
+    from deploykit.agent import build_system_prompt
+    p = build_system_prompt(CONFIG, chunks).lower()
+    assert "acknowledge" in p and "already told you" in p and "do not repeat facts" in p

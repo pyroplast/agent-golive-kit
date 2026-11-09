@@ -95,6 +95,7 @@ def turn_summary(t: dict, s: ChatSession, chunks) -> dict:
         "wrap_up": bool(t.get("wrap_up")), "fixed": t.get("fixed"), "repeat": bool(t.get("repeat")),
         "buyer": dict(s.buyer),
         "guard": {"slow_path": bool(g.get("slow_path")), "skipped": g.get("skipped", 0),
+                  "repeated": g.get("repeated", 0),
                   "approved_answer": g.get("approved_substitute") or t.get("approved_answer") or [],
                   "retried": bool(g.get("retried")), "safe_reply": bool(g.get("fell_back")),
                   "problems": [f"{p['type']}: {p['detail']}" for p in problems]},
@@ -231,7 +232,7 @@ function showHood(t){const g=t.guard,tm=t.timing||{};let h='';
  h+=row('Turn',t.n)+row('Risk level',t.tier?`<span class="tag ${t.tier}">${t.tier}</span>`:'off')+row('Model',t.model==='agent'?'Qwen3-235B':'Qwen3-30B (fast)');
  h+=row('First words',tm.first_words_s!=null?tm.first_words_s.toFixed(2)+' s':'-')+row('Reply finished',tm.total_s!=null?tm.total_s.toFixed(2)+' s':'-')+row('Typing dots shown',tm.filler?'yes (over 1.5 s)':'no');
  let path=t.repeat?'same question as before: same answer'+(t.park?', now on the agenda':''):t.fixed?'fixed reply ('+t.fixed+')':t.wrap_up?'wrap-up written by code':g.slow_path?'slow path (draft, check, retry)':g.approved_answer.length?'client-approved answer: '+g.approved_answer.join(', '):g.skipped?g.skipped+' sentence(s) dropped by the guard':'every sentence passed';
- if(g.safe_reply)path+=', then the safe reply';h+=row('Guard',esc(path));
+ if(g.safe_reply)path+=', then the safe reply';if(g.repeated)path+=`; ${g.repeated} repeated fact(s) left out`;h+=row('Guard',esc(path));
  if(t.handoff)h+=row('Handoff','yes: handed to a person');if(t.park)h+=row('Added to the agenda','yes');
  if(g.problems.length)h+='<h3>What the guard blocked</h3><ul>'+g.problems.map(p=>`<li>${esc(p)}</li>`).join('')+'</ul>';
  h+='<h3>Sources quoted</h3>'+(t.sources.length?'<ul>'+t.sources.map(s=>`<li><a href="${esc(s.url)}" target="_blank">${esc(s.title)} › ${esc(s.heading)}</a> <span class="empty">[${esc(s.id)}]</span></li>`).join('')+'</ul>':'<p class="empty">none</p>');
