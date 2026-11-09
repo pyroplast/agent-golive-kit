@@ -13,6 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import re
 
 from deploykit.calls import RepeatTracker, _FROM, _INTRO, call_names
+from deploykit.demo_plan import DemoPlan
 from deploykit.judge import Judge
 from deploykit.live import LiveAgent
 from deploykit.risk import max_tier
@@ -29,6 +30,7 @@ class ChatSession:
         self.floor, self.tier, self.turn_no, self.ended = None, None, 0, False
         self.agent.context_names = set()
         self.repeats = RepeatTracker(self.config)
+        self.plan = DemoPlan(self.config.get("demo_plan", []))
         self.buyer = {}  # what the agent learned about the buyer, shown above the question list
 
     def ask(self, text: str, on_event=None) -> dict:
@@ -42,6 +44,8 @@ class ChatSession:
                 on_event(e)
         self.agent.on_event = listen
         start = time.perf_counter()
+        guide = self.plan.before(text)
+        self.agent._guide = guide
         seen = self.repeats.lookup(text)
         try:
             if seen:
@@ -52,9 +56,14 @@ class ChatSession:
                 self.repeats.record(text, t)
         finally:
             self.agent.on_event = None
+            self.agent._guide = None
         self._learn(text, t)
+        added = self._follow_up(t, guide)
         if not any(e["type"] == "say" for e in heard):  # e.g. the wrap-up, written by code in one piece
             listen({"type": "say", "text": t["reply"], "t": round(time.perf_counter() - start, 3)})
+        elif added:
+            listen({"type": "say", "text": added, "t": round(time.perf_counter() - start, 3)})
+        self.plan.after(t, guide)
         self.turn_no += 1
         t["n"] = self.turn_no
         if t.get("tier"):
@@ -73,6 +82,27 @@ class ChatSession:
             on_event({"type": "done", "turn": turn_summary(t, self, self.chunks)})
         return t
 
+
+    @staticmethod
+    def _follow_up(t: dict, guide: dict) -> str:
+        """Every reply ends with a follow-up question that keeps the demo moving (not after a wrap-up or handoff).
+        A small-talk reply gets the planned question in place of its own."""
+        if t.get("wrap_up") or t.get("handoff"):
+            return ""
+        q = guide["next_question"]
+        if t.get("small_talk"):
+            parts = re.split(r"(?<=[.!?])\s+", t["reply"].strip())
+            while parts and parts[-1].rstrip().endswith("?"):
+                parts.pop()
+            t["reply"] = " ".join(parts + [q]).strip()
+            return ""
+        if t["reply"].rstrip().endswith("?"):
+            return ""
+        body = t["reply"].rstrip()
+        if body and body[-1] not in ".!?":
+            body += "."  # never run the follow-up into the previous sentence
+        t["reply"] = f"{body} {q}".strip()
+        return q
 
     def _learn(self, text: str, t: dict) -> None:
         if "name" not in self.buyer and _INTRO.search(text):
@@ -93,7 +123,7 @@ def turn_summary(t: dict, s: ChatSession, chunks) -> dict:
         "n": t.get("n"), "reply": t["reply"], "tier": t.get("tier"), "model": t.get("model_role", "agent"),
         "timing": t.get("timing") or {}, "handoff": bool(t.get("handoff")), "park": t.get("park"),
         "wrap_up": bool(t.get("wrap_up")), "fixed": t.get("fixed"), "repeat": bool(t.get("repeat")),
-        "buyer": dict(s.buyer),
+        "buyer": dict(s.buyer), "plan": s.plan.summary(),
         "guard": {"slow_path": bool(g.get("slow_path")), "skipped": g.get("skipped", 0),
                   "repeated": g.get("repeated", 0),
                   "approved_answer": g.get("approved_substitute") or t.get("approved_answer") or [],
@@ -238,6 +268,7 @@ function showHood(t){const g=t.guard,tm=t.timing||{};let h='';
  h+='<h3>Sources quoted</h3>'+(t.sources.length?'<ul>'+t.sources.map(s=>`<li><a href="${esc(s.url)}" target="_blank">${esc(s.title)} › ${esc(s.heading)}</a> <span class="empty">[${esc(s.id)}]</span></li>`).join('')+'</ul>':'<p class="empty">none</p>');
  if(t.judge)h+='<h3>Judge (DeepSeek-V4-Pro)</h3>'+row('Grounded',t.judge.grounded?'yes':'<b style="color:#b34a1c">no</b>')+(t.judge.unsupported_claims&&t.judge.unsupported_claims.length?'<ul>'+t.judge.unsupported_claims.map(c=>`<li>${esc(c)}</li>`).join('')+'</ul>':'')+`<p class="empty">${esc(t.judge.notes||'')}</p>`;
  h+='<h3>Call memory</h3>'+row('Messages',t.memory.messages)+row('Facts already given',t.memory.facts)+row('Risk carried to next turn',t.memory.risk_carried||'none');
+ const P=t.plan||{topics:[]};h+='<h3>Demo plan</h3>'+(P.topics.length?'<ol style="font-size:13px;padding-left:18px">'+P.topics.map(x=>`<li style="color:${x.status==='covered'?'#1d5fae':x.status==='next'?'#15181d':'#9aa0a8'};font-weight:${x.status==='next'?'600':'400'}">${esc(x.title)}${x.status==='covered'?' ✓':x.status==='next'?' ← offered next':x.status==='skipped'?' (skipped)':''}</li>`).join('')+'</ol>':'<p class="empty">no plan</p>');
  const B=t.buyer||{},L={name:'Name',company:'Company',company_size:'Employees',countries:'Countries',current_system:'Uses today',modules:'Interested in',timeline:'Timeline'};
  h+='<h3>About the buyer</h3>'+(Object.keys(B).length?Object.keys(B).map(k=>row(L[k]||k,esc(B[k]))).join(''):'<p class="empty">nothing yet</p>');
  h+='<h3>Question list for the sales representative</h3>'+(t.parked.length?'<ol style="font-size:13px;padding-left:18px">'+t.parked.map(p=>`<li>${esc(p)}</li>`).join('')+'</ol>':'<p class="empty">empty</p>');

@@ -228,6 +228,7 @@ class DemoAgent:
         self.policy = RiskPolicy(config["risk"], approved) if approved is not None and "risk" in config else None
         self.glossary = set(config.get("glossary", []))
         self.context_names: set[str] = set()  # the buyer's company and attendee names, set per call
+        self._guide: dict | None = None  # this turn's demo-plan instructions, set by the chat session
         self.retrieval, self.k = retrieval, k
         self.ids = {c.id for c in chunks}
         self.index = BM25Index(chunks) if retrieval == "bm25" else None
@@ -291,7 +292,7 @@ class DemoAgent:
             turn["timing"] = {"streamed": False, "filler": False, "first_words_s": 0, "first_sentence_s": 0,
                               "total_s": 0}
             return turn
-        if is_small_talk(last):
+        if is_small_talk(last) and not (self._guide and self._guide.get("present")):  # "ok" after an offer = yes
             return self._small_talk(history, lang)
         fixed = fixed_answer(self.config, last) if not asks_for_human(last) else None
         if fixed:
@@ -356,6 +357,9 @@ class DemoAgent:
             system += ("\n\nFACTS YOU ALREADY GAVE IN THIS CALL. When the prospect asks you to repeat, summarise or "
                        "build on an earlier answer, reuse these claims with the same source and quote, and do not "
                        "contradict them:\n" + facts)
+        if self._guide:
+            from deploykit.demo_plan import prompt_block
+            system += "\n\n" + prompt_block(self._guide)
         return system + ("\n\n" + self.policy.prompt_block(tier, question) if self.policy and tier else "")
 
     def _small_talk(self, history, lang):

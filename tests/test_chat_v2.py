@@ -71,9 +71,9 @@ def test_the_same_question_gets_the_same_answer_and_goes_on_the_list_the_second_
 def test_price_questions_count_as_the_same_question(chunks):
     s = ChatSession(CONFIG, chunks, Counting())
     a = s.ask("Give me the exact price with a 40% discount.")
-    assert a["reply"] == PRICE and s.parked == []
+    assert a["reply"].startswith(PRICE) and s.parked == []  # then the demo-plan follow-up question
     b = s.ask("Roughly what would this cost us?")
-    assert b["reply"] == PRICE and s.parked == ["Roughly what would this cost us?"]
+    assert b["reply"].startswith(PRICE) and s.parked == ["Roughly what would this cost us?"]
 
 
 def test_run_call_applies_the_same_repeat_rule(config, chunks):

@@ -2,7 +2,7 @@
   "client": "HiBob",
   "product": "Bob",
   "agent_name": "Bob demo assistant",
-  "goal": "Answer prospect questions about Bob accurately, walk them through the parts of the product that match their needs, qualify them, and hand off to a human Account Executive when needed.",
+  "goal": "Walk the prospect through HiBob's core topics, one at a time, answer their questions as they come, keep them engaged with a follow-up question, qualify them, and put what you can't answer on the agenda for the sales representative.",
   "personas": {
     "hr_lead": {
       "label": "Head of People at a 300-person scale-up",
@@ -230,6 +230,98 @@
         "\\bwhat(?:'s| is) the agenda\\b"
       ],
       "note": "Pavlo, 9 Nov"
+    }
+  ],
+  "demo_plan": [
+    {
+      "id": "core",
+      "title": "Core HR",
+      "sections": [
+        "core"
+      ],
+      "question": "Shall I start with how Bob keeps all your people data and org structure in one place?"
+    },
+    {
+      "id": "onboarding",
+      "title": "Onboarding and workflows",
+      "sections": [
+        "automation"
+      ],
+      "question": "Would you like to see how onboarding runs automatically from the hire date?"
+    },
+    {
+      "id": "self-service",
+      "title": "Employee self-service and mobile",
+      "sections": [
+        "self-service"
+      ],
+      "question": "Shall I show you what employees see in the app and on mobile?"
+    },
+    {
+      "id": "time",
+      "title": "Time off and attendance",
+      "sections": [
+        "time"
+      ],
+      "question": "Would it help to see how time off and attendance work?"
+    },
+    {
+      "id": "performance",
+      "title": "Performance and goals",
+      "sections": [
+        "performance"
+      ],
+      "question": "Shall we look at performance reviews and goals next?"
+    },
+    {
+      "id": "hiring",
+      "title": "Hiring",
+      "sections": [
+        "hiring"
+      ],
+      "question": "Would you like to see how hiring works, from job post to offer?"
+    },
+    {
+      "id": "compensation",
+      "title": "Compensation",
+      "sections": [
+        "compensation"
+      ],
+      "question": "Shall I show you how compensation cycles and budgets work?"
+    },
+    {
+      "id": "payroll",
+      "title": "Payroll",
+      "sections": [
+        "payroll-hub",
+        "payroll-uk"
+      ],
+      "question": "Would you like to see how payroll fits in?"
+    },
+    {
+      "id": "analytics",
+      "title": "Reporting and analytics",
+      "sections": [
+        "analytics"
+      ],
+      "question": "Shall I show you the reporting and analytics?"
+    },
+    {
+      "id": "security",
+      "title": "Security and AI data handling",
+      "sections": [
+        "security",
+        "ai"
+      ],
+      "question": "Would you like to cover security and how Bob AI handles your data?"
+    },
+    {
+      "id": "integrations",
+      "title": "Integrations",
+      "sections": [
+        "integrations"
+      ],
+      "question": "Shall I show you how Bob connects to the tools you already use?"
     }
   ]
 }
