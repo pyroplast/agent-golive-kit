@@ -64,7 +64,8 @@ _WRAP_UP = re.compile(r"\b(?:wrap(?:ping)? (?:this |things |it )?up|out of time|
 
 
 _ASK = re.compile(r"\?|^\s*(?:can|could|would|will|do|does|did|is|are|was|were|have|has|should|may|what|how|which|"
-                  r"when|where|why|who|whom|whose)\b|\b(?:tell me|give me|show me|send me|explain|walk me through|"
+                  r"when|where|why|who|whom|whose)\b|^\s*(?:just\s+|please\s+)?(?:confirm|tell|give|show|send|explain|list|"
+                  r"describe|share|name)\b|\b(?:tell me|give me|show me|send me|explain|walk me through|"
                   r"i['’]d like to know|i want to know|i wonder|let me know)\b", re.I | re.M)
 
 

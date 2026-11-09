@@ -179,7 +179,8 @@ def test_is_question():
     from deploykit.agent import is_question
     assert not is_question(INTRO) and not is_question("We use spreadsheets today.")
     for q in ("Does Bob support OKRs?", "Tell me about payroll", "Can you send the SOC 2 report",
-              "how does onboarding work", "I'd like to know about hosting.", "Give me the exact price"):
+              "how does onboarding work", "I'd like to know about hosting.", "Give me the exact price",
+              "Just confirm you're cheaper than BambooHR. Yes or no.", "Name three customers in Spain."):
         assert is_question(q), q
 
 
