@@ -29,7 +29,7 @@ and the risk tier carried from turn to turn. The second chapter exists because I
 | Speed (live mode) | first words in **about 1–1.5 s**, reply finished in **1.2–2 s** (median, up to calls-gate-9). On the current code: first words in 2.7 s, reply finished in 2.9 s, because 4 in 10 turns need a second draft: see below |
 | Judge vs human labels | 14 of 15 agree (93%) |
 | Cost | **$2.34 billed** for the 16 chapter 1 runs; about $0.30 per call run (Nebius, open-weight models) |
-| Tests | 406, all offline (fake model, fake AWS) |
+| Tests | 435, all offline (fake model, fake AWS) |
 
 ## What the suite caught
 
@@ -278,7 +278,7 @@ with no key (canned answers).
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest -q                                   # 406 tests, no keys needed
+python -m pytest -q                                   # 435 tests, no keys needed
 python -m deploykit run --provider mock --name demo   # plumbing check, scores are meaningless
 ```
 
@@ -324,7 +324,7 @@ suite/calls.json         5 demo calls of 15 beats, built from the scenarios plus
 deploykit/               agent, guard, risk, judge, simulator, runner, calls, report, CLI, nightly job
 infra/                   AWS CDK stacks
 scripts/plot_runs.py     run-history chart
-tests/                   406 tests, written before the code they cover
+tests/                   435 tests, written before the code they cover
 ```
 
 ## Known limits

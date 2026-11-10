@@ -64,8 +64,12 @@ class Discovery:
         self.max_questions = max_questions
         self.asked, self.pending, self.active, self.declined = set(), None, True, False
 
-    def question(self, field: str) -> str:
+    def question(self, field: str, other: bool = False) -> str:
+        """The question as asked on the call; other=True gives its second wording, for a buyer who asks what was
+        meant ("clarify" in the config, else the plain form of the question)."""
         f = next(x for x in self.fields if x["field"] == field)
+        if other:
+            return f.get("clarify") or f["question"]
         return f.get("ask") or f["question"]
 
     def next_field(self, known: dict):

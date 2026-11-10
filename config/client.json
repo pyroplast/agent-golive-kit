@@ -55,27 +55,32 @@
     {
       "field": "company_size",
       "question": "How many employees do you have?",
-      "ask": "Roughly how many people are on your team?"
+      "ask": "Roughly how many people are on your team?",
+      "clarify": "Roughly how many employees does your company have?"
     },
     {
       "field": "countries",
       "question": "Which countries do you employ people in?",
-      "ask": "Which countries do you employ people in?"
+      "ask": "Which countries do you employ people in?",
+      "clarify": "In which countries do you have employees?"
     },
     {
       "field": "current_system",
       "question": "What do you use for HR today?",
-      "ask": "What do you use for HR today?"
+      "ask": "What do you use for HR today?",
+      "clarify": "Where do you keep your employee records today: spreadsheets, or an HR system?"
     },
     {
       "field": "modules",
       "question": "Which areas matter most: core HR, talent, payroll, or compensation?",
-      "ask": "What's the biggest HR headache you'd like to fix first?"
+      "ask": "What's the biggest HR headache you'd like to fix first?",
+      "clarify": "Which part of HR takes the most manual work today: for example onboarding, time off, reviews or payroll?"
     },
     {
       "field": "timeline",
       "question": "When do you want to be live?",
-      "ask": "And when would you ideally like to be up and running?"
+      "ask": "And when would you ideally like to be up and running?",
+      "clarify": "I mean your target date: when would you like the new HR system to be in use?"
     }
   ],
   "handoff_rules": [

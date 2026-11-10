@@ -127,12 +127,32 @@ _SMALL_FALLBACK = (
 )
 
 
-def small_talk_fallback(text: str) -> str:
+def small_talk_fallback(text: str, mid_call: bool = False) -> str:
     low = (text or "").lower()
     for pattern, reply in _SMALL_FALLBACK:
         if pattern.search(low):
             return reply
+    if mid_call:  # a "hello" in the middle of a call checks the agent is still there; it is not a first meeting
+        return "I'm here. What would you like to look at next?"
     return "Hi! Nice to meet you. What would you like to see in Bob today?"
+
+
+_GREETS_AGAIN = re.compile(r"^\W*(?:hi|hello|hey|hiya|greetings|good (?:morning|afternoon|evening))\b|"
+                           r"\b(?:nice|pleased|great|good|lovely) to meet you\b", re.I)
+
+_CLARIFY = re.compile(
+    r"^(?:sorry|pardon|excuse me|hm+|uh+|eh)?[\s,.!]*(?:wdym|wym|what do (?:you|u|ya) mean|what(?:'s| is) that"
+    r"|meaning|huh|what|sorry|pardon(?: me)?|come again|say (?:that )?again|in what sense|how so|how do you mean"
+    r"|(?:i )?(?:do not|don'?t|didn'?t) (?:understand|get it|get that|follow)|(?:i'?m )?not sure (?:what you mean|i (?:understand|follow))"
+    r"|(?:can|could) you (?:rephrase|repeat|clarify|say that again|explain)(?: (?:that|it|the question))?"
+    r"|what are you asking|what(?:'s| is) the question)[\s?!.]*$", re.I)
+
+
+def is_clarification(text: str) -> bool:
+    """The buyer did not understand what the agent just said or asked ("wdym", "sorry?", "what do you mean?").
+    It is neither an answer nor a product question (Pavlo, 10 Nov: "wdym" was saved as the buyer's timeline)."""
+    t = (text or "").strip().lower().replace("’", "'")
+    return bool(t) and (bool(_CLARIFY.match(t)) or not re.search(r"[a-z0-9]", t))
 
 
 def is_wrap_up(text: str) -> bool:
@@ -147,6 +167,9 @@ def carried_tier(policy, question: str, floor: str | None) -> str:
     own = policy.question_tier(question)
     return max_tier(floor or "low", own) if own == "low" else own
 
+
+MID_CALL = (" The call is already under way: do not greet them again, do not say it is nice to meet them and do not "
+            "introduce yourself unless they ask who you are.")
 
 SMALL_TALK_SYSTEM = """You are {name}, HiBob's AI sales assistant on a live demo call. The prospect just said
 something social (a greeting, "how are you", thanks, or a question about you). Reply like a friendly professional, in
@@ -433,7 +456,11 @@ class DemoAgent:
         import time as _time
         start = _time.perf_counter()
         last = history[-1]["content"]
-        system = system or SMALL_TALK_SYSTEM.format(name=self.config.get("agent_name", "the HiBob assistant"))
+        # Small talk after the agent has already spoken is not a first meeting (Pavlo, 10 Nov: "hello" mid-call got
+        # "Hi! Nice to meet you.").
+        mid_call = system is None and any(m["role"] == "assistant" for m in history)
+        system = system or (SMALL_TALK_SYSTEM.format(name=self.config.get("agent_name", "the HiBob assistant"))
+                            + (MID_CALL if mid_call else ""))
         r = self.llm.complete("agent_fast", system, history[-6:], meta={"chunks": [], "lang": lang, "small_talk": True})
         data, _ = self._parse(r.text)
         reply = strip_cites(str(data.get("reply", "")).strip())
@@ -442,10 +469,11 @@ class DemoAgent:
             if self.glossary else re.compile(r"\b(?:bob|hibob)\b" + digit, re.I)
         sentences = [x for x in re.split(r"(?<=[.!?])\s+", reply) if x]
         bad = (not reply or len(reply) > 320 or data.get("claims")
-               or any(product.search(x) and not x.rstrip().endswith("?") for x in sentences))
+               or any(product.search(x) and not x.rstrip().endswith("?") for x in sentences)
+               or (mid_call and _GREETS_AGAIN.search(reply)))
         turn = wrap_up_turn([])
         if bad:
-            reply = fallback or small_talk_fallback(last)
+            reply = fallback or small_talk_fallback(last, mid_call=mid_call)
         turn.update(reply=reply, wrap_up=False, small_talk=True,
                     qualification=data.get("qualification") if isinstance(data.get("qualification"), dict) else {},
                     guard={"enabled": True, "retried": False, "fell_back": bool(bad), "composed": False},
