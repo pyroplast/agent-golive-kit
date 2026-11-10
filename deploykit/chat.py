@@ -69,6 +69,8 @@ class ChatSession:
         guide = {**guide, "discovery": ("question" if asked else "answer") if in_disc and not first else None}
         self.agent._guide = guide
         self.agent.drop_questions = in_disc
+        # A closing question must not offer a topic the reply has just covered; code then adds the next one.
+        self.agent.question_filter = lambda so_far, q: not self.plan.is_stale_offer(q, so_far, guide)
         seen = None if declined or unclear else self.repeats.lookup(text)
         reask = in_disc and not first and unclear and disc.pending and disc.pending not in self.buyer
         try:
@@ -95,6 +97,7 @@ class ChatSession:
             self.agent.on_event = None
             self.agent._guide = None
             self.agent.drop_questions = False
+            self.agent.question_filter = None
         self._learn(text, t)
         lead, q = "", guide["next_question"]
         if first:
@@ -113,6 +116,16 @@ class ChatSession:
                 disc.stop()
                 lead = (lead + " " if lead else "") + "Thanks, that gives me a good picture."
                 q = self.plan.next_question()
+        streamed = any(e["type"] == "say" for e in heard)
+        if not disc.active and not first and not t.get("wrap_up") and not t.get("handoff"):
+            now = self.plan.covered_by(t, guide)
+            parts = re.split(r"(?<=[.!?])\s+", t["reply"].strip())
+            if not streamed:  # a reply that arrived in one piece: drop its own offer of a covered topic
+                while parts and parts[-1].rstrip().endswith("?") and self.plan.is_stale_offer(parts[-1], t, guide):
+                    parts.pop()
+                t["reply"] = " ".join(parts)
+            if self.plan.offers(q) in now:
+                q = self.plan.next_question(exclude=now)
         said = t["reply"]
         added = self._follow_up(t, q, lead, replace=in_disc or first, streamed=any(e["type"] == "say" for e in heard))
         if not any(e["type"] == "say" for e in heard):  # e.g. the wrap-up, written by code in one piece

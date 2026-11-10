@@ -250,6 +250,10 @@ class LiveAgent(DemoAgent):
             self._emit("say", SAFE_TAIL, t0)
         if held and getattr(self, "drop_questions", False):
             held.clear()  # discovery: code adds the one question for this turn (Pavlo, 9 Nov)
+        keep = getattr(self, "question_filter", None)
+        if held and keep:  # e.g. no offer of a topic this very reply has just covered (Pavlo, 10 Nov)
+            so_far = {"reply": reply, "citations": [str(c.get("source", "")) for c in claims] + list(approved_cites)}
+            held[:] = [h for h in held if keep(so_far, h)]
         if held:
             reply = " ".join([reply, *held]).strip()
             for h in held:

@@ -10,7 +10,12 @@ import re
 AFFIRM = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "please", "go ahead", "go on", "sounds good", "lets do it",
           "lets see", "lets go", "absolutely", "of course", "definitely", "why not", "great", "perfect", "sure thing",
           "yes please", "please do", "show me", "yes sure", "ok sure", "sure go ahead", "yes go ahead", "ok lets do it",
-          "yes lets do it", "sounds great", "that would be great", "id like that", "interested", "tell me more"}
+          "yes lets do it", "sounds great", "that would be great", "id like that", "interested", "tell me more",
+          # casual (Pavlo, 10 Nov: "bet" after an offer was not read as a yes)
+          "bet", "yea", "ya", "yes yes", "k", "kk", "alright", "aight", "all right", "for sure", "go for it", "do it",
+          "sgtm", "works", "works for me", "fine", "cool", "nice", "awesome", "good", "right", "ok cool", "okay cool",
+          "ok great", "ok go", "ok go ahead", "yes lets start", "lets start", "lets", "yes lets", "sounds like a plan",
+          "please go ahead", "continue", "go", "carry on", "keep going", "yessir", "mhm", "uh huh", "ok then"}
 NEGATE = {"no", "nope", "not now", "no thanks", "no thank you", "skip", "skip that", "skip it", "maybe later", "later",
           "not really", "not interested", "pass", "next", "something else"}
 DONE = "Is there anything else you'd like to dig into, or shall I recap the open questions for the sales representative?"
@@ -127,19 +132,34 @@ class DemoPlan:
         low = text.lower()
         return sum(k in low for k in topic.get("keywords", [])) + (topic["title"].lower() in low)
 
+    def covered_by(self, turn: dict, guide: dict) -> set:
+        """Topics this reply covered: a cited section, or the reply itself talked about it (Pavlo, 9 Nov: Core HR
+        was described, then offered again), or the topic the buyer agreed to hear about."""
+        sentences = re.split(r"(?<=[.!?])\s+", turn.get("reply", "").strip())
+        statements = " ".join(x for x in sentences if not x.rstrip().endswith("?"))
+        docs = {str(c).split("#")[0] for c in turn.get("citations", [])}
+        out = {t["id"] for t in self.topics
+               if set(t["sections"]) & docs or (not guide.get("intro") and self._mentions(t, statements) >= 2)}
+        if guide.get("present"):
+            out.add(guide["present"]["id"])
+        return out
+
+    def offers(self, question: str):
+        """The topic a closing question is about, or None when it names no topic."""
+        best = max(self.topics, key=lambda t: self._mentions(t, question), default=None)
+        return best["id"] if best is not None and self._mentions(best, question) > 0 else None
+
+    def is_stale_offer(self, question: str, turn: dict, guide: dict) -> bool:
+        """The question offers a topic that is already covered, by this reply or an earlier one (Pavlo, 10 Nov: the
+        agent presented Core HR and closed with "Shall we start with Core HR?")."""
+        topic = self.offers(question)
+        return topic is not None and topic in (self.covered | self.declined | self.covered_by(turn, guide))
+
     def after(self, turn: dict, guide: dict) -> None:
         reply = turn.get("reply", "")
         sentences = re.split(r"(?<=[.!?])\s+", reply.strip())
         questions = [x for x in sentences if x.rstrip().endswith("?")]
-        statements = " ".join(x for x in sentences if not x.rstrip().endswith("?"))
-        docs = {c.split("#")[0] for c in turn.get("citations", [])}
-        for t in self.topics:
-            # covered: a cited section, or the reply itself talked about it (Pavlo, 9 Nov: Core HR was described,
-            # then offered again)
-            if set(t["sections"]) & docs or (not guide.get("intro") and self._mentions(t, statements) >= 2):
-                self.covered.add(t["id"])
-        if guide.get("present"):
-            self.covered.add(guide["present"]["id"])
+        self.covered |= self.covered_by(turn, guide)
         if turn.get("wrap_up") or turn.get("handoff"):
             return
         # offered next: the topic the closing question is about (the model words it itself)
