@@ -65,3 +65,19 @@ def test_asking_for_the_soc2_report_gets_the_approved_answer_not_an_uncited_decl
     t = _turn("Great, can you send me the SOC 2 report now?", lines, ledger=[], approved=APPROVED)
     assert "The SOC 2 report is available on request under NDA" in t["reply"]
     assert t["citations"] and "I can't share the SOC 2 report directly" not in t["reply"]
+
+
+# --- 3. calls-gate-15: a fact joined to a "not in the material" clause -------------------------------------------
+
+def test_a_fact_joined_to_a_not_in_the_material_clause_is_still_a_fact():
+    s = "SSO with 2FA is recommended, but mandatory 2FA is not specified in our public material."
+    assert factual_sentences(s) == [s]
+    s = "The material doesn't list a price, although most customers pay per employee."
+    assert factual_sentences(s) == [s]
+
+
+def test_two_non_fact_clauses_joined_by_but_are_still_not_a_fact():
+    for s in ("I can't confirm that from HiBob's material, but I have added it to the agenda.",
+              "That isn't covered in the material, but I can add it to the list for the sales representative.",
+              "The material does not mention that, but I can't guess."):
+        assert factual_sentences(s) == [], s

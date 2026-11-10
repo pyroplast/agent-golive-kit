@@ -46,6 +46,18 @@ def _decline_with_a_fact(s: str) -> bool:
     return not any(p.search(m.group(1)) for p in _NON_FACT)
 
 
+# "SSO with 2FA is recommended, but mandatory 2FA is not specified in our public material": the second half is a
+# statement about the sources, the first half is a fact (calls-gate-15).
+_CLAUSE = re.compile(r",?\s+(?:but|although|though|however|whereas|while)\s+|;\s+", re.I)
+
+
+def _fact_clause(s: str) -> bool:
+    parts = [c.strip(" ,.!") for c in _CLAUSE.split(s)]
+    if len(parts) < 2:
+        return False
+    return any(len(c.split()) >= 4 and not any(p.search(c) for p in _NON_FACT) for c in parts)
+
+
 _PLEASANTRY = re.compile(r"^(hi|hello|hey|thanks|thank you|of course|sure|great|good question|happy to help|got it|understood)\b", re.I)
 
 
@@ -58,7 +70,7 @@ def factual_sentences(reply: str) -> list[str]:
             continue
         if _PLEASANTRY.match(s) and len(s.split()) <= 6:
             continue
-        if any(p.search(s) for p in _NON_FACT) and not _decline_with_a_fact(s):
+        if any(p.search(s) for p in _NON_FACT) and not _decline_with_a_fact(s) and not _fact_clause(s):
             continue
         out.append(s)
     return out
