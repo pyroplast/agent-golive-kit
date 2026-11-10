@@ -27,7 +27,7 @@ _NON_FACT = [re.compile(p, re.I) for p in (
     r"\b(sources?|material|information|documentation|website)\b.*\b(do(es)?\s+not|don't|doesn't|isn't|aren't|not)\b",
     r"(\bnot|n't)\s+(mention|cover|specif|list|describ|publish|state|includ|confirm|share|advise|provide|give)",
     r"\b(i|we)\s*('m|\s+am)?\s*(can't|cannot|can not|unable|won't|not able)\b",
-    r"\badd\w*\b.*\blist\b",
+    r"\badd\w*\b.*\b(?:list|agenda)\b",
     r"\b(hand\w*|connect\w*|pass\w*)\b.*\b(team member|account executive|person|someone|team)\b",
     r"\bkeep going\b",
     r"^(let me know|feel free|would you like|do you want|happy to|i'd be happy|i can help)\b",

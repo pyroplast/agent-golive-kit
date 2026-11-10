@@ -147,3 +147,23 @@ def test_more_ways_of_asking_for_a_person(text):
 ])
 def test_product_questions_about_people_are_not_a_request_for_one(text):
     assert not asks_for_human(text)
+
+
+# --- 4. the agent's own agenda sentence is not a product fact ------------------------------------------------------
+# calls-gate-10 to 12: on 9 Nov the park sentence changed from "add this to the list" to "added ... to the agenda".
+# The guard still only knew the "list" wording, so it blocked the agent's own sentence as a fact with no quote:
+# 7-9 blocks a run, each one a retry on the slow path.
+
+def test_the_agenda_sentence_needs_no_claim(config, chunks):
+    from deploykit.guard import check_reply, factual_sentences
+    offer = config["park_offer"]
+    assert factual_sentences(offer) == []
+    assert factual_sentences("I can't confirm that from HiBob's material. " + offer) == []
+    d = {"reply": offer, "claims": [], "handoff": False, "unknown": True, "park": "Do you have customers in Spain?"}
+    assert check_reply(d, chunks, "Do you have customers in Spain?")["ok"]
+
+
+def test_a_fact_next_to_the_agenda_sentence_is_still_checked(config, chunks):
+    from deploykit.guard import check_reply
+    d = {"reply": "Most teams go live in six weeks. " + config["park_offer"], "claims": [], "handoff": False}
+    assert not check_reply(d, chunks, "How long does it take to go live?")["ok"]
