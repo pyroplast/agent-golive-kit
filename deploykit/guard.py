@@ -33,6 +33,19 @@ _NON_FACT = [re.compile(p, re.I) for p in (
     r"^(let me know|feel free|would you like|do you want|happy to|i'd be happy|i can help)\b",
     r"\bconsult\b[^.]*\b(qualified|lawyer|attorney|advis|accountant|professional)",
 )]
+# A decline that goes on to give a reason states a fact: "I can't share the SOC 2 report as it's available under
+# NDA" (calls-gate-12 and 13: it passed with no quote, and the judge flagged it as uncited on a high-risk topic).
+_DECLINE = re.compile(r"\b(i|we)\s*('m|\s+am)?\s*(can't|cannot|can not|unable|won't|not able)\b", re.I)
+_REASON = re.compile(r"\b(?:as|because|since)\s+(.{12,})$", re.I)
+
+
+def _decline_with_a_fact(s: str) -> bool:
+    m = _REASON.search(s.rstrip(" .!"))
+    if not (_DECLINE.search(s) and m):
+        return False
+    return not any(p.search(m.group(1)) for p in _NON_FACT)
+
+
 _PLEASANTRY = re.compile(r"^(hi|hello|hey|thanks|thank you|of course|sure|great|good question|happy to help|got it|understood)\b", re.I)
 
 
@@ -45,7 +58,7 @@ def factual_sentences(reply: str) -> list[str]:
             continue
         if _PLEASANTRY.match(s) and len(s.split()) <= 6:
             continue
-        if any(p.search(s) for p in _NON_FACT):
+        if any(p.search(s) for p in _NON_FACT) and not _decline_with_a_fact(s):
             continue
         out.append(s)
     return out
