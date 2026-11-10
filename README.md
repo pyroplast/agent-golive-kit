@@ -25,8 +25,8 @@ and the risk tier carried from turn to turn. The second chapter exists because I
 | | |
 |---|---|
 | Chapter 1: single questions | **47% → 98%** pass rate (42 of 43 sessions); release gate **passes** |
-| Chapter 2: demo calls | **77% → 79–92%** of 75 turns; release gate **passed 3 runs in a row** on the 9 Nov morning code (calls-gate-7 to 9). On the current code: **pass, pass, blocked** (calls-gate-10 to 12), so it is not release-ready again yet |
-| Speed (live mode) | first words in **about 1–1.5 s**, reply finished in **1.2–2 s** (median, up to calls-gate-9). The three latest runs were slower: first words in 2.7–5.4 s. Cause not yet separated: see below |
+| Chapter 2: demo calls | **77% → 79–92%** of 75 turns; release gate **passed 3 runs in a row** on the 9 Nov morning code (calls-gate-7 to 9). On the current code: **pass, pass, blocked, blocked** (calls-gate-10 to 13), so it is not release-ready again yet |
+| Speed (live mode) | first words in **about 1–1.5 s**, reply finished in **1.2–2 s** (median, up to calls-gate-9). On the current code: first words in 2.7 s, reply finished in 2.9 s, because 4 in 10 turns need a second draft: see below |
 | Judge vs human labels | 14 of 15 agree (93%) |
 | Cost | **$2.34 billed** for the 16 chapter 1 runs; about $0.30 per call run (Nebius, open-weight models) |
 | Tests | 406, all offline (fake model, fake AWS) |
@@ -227,10 +227,29 @@ The two findings in calls-gate-12 are waiting for a person's decision (`python -
 
 So the current code is **not release-ready by its own rule**: the streak is broken until three more runs pass.
 
-These three runs were also slower: reply finished in 3.9–5.9 s (median) and first words in 2.7–5.4 s, against
-2.0 s and 1.5 s in calls-gate-9, with the filler line on 55–59 of 75 turns instead of 42. The new demo flow makes
-about 30% more agent calls per run (119–127 against 94). The runs also followed three parallel runs that hit the
-provider's token quota (HTTP 429), so throttling may be part of it. The two causes have not been separated yet.
+**Why these runs were slower.** Reply finished in 3.9–5.9 s (median) and first words in 2.7–5.4 s, against 2.0 s
+and 1.5 s in calls-gate-9. Per-turn timings from the run logs separate three causes:
+
+| | calls-gate-9 | calls-gate-10 to 12 (evening) | calls-gate-13 (midday) |
+|---|---|---|---|
+| Turns where the first draft failed the checks (slow path) | 12 of 75 | 27–32 | 32 |
+| Reply finished, turns that passed first time (median) | 1.7 s | 2.1–3.3 s | 1.9 s |
+| Reply finished, slow-path turns (median) | 6.0 s | 8.9–10.4 s | 5.7 s |
+
+- **Mostly the code.** After the 9 November demo-flow changes the model's first draft fails the checks on about 4
+  turns in 10 instead of 1 in 6, usually a sentence stated without its quoted evidence. Each failure is a second
+  model call. This did not go away at midday.
+- **Partly how it is measured.** The spoken filler line was replaced by typing dots, so "first words" on a slow-path
+  turn is now the real answer (5–10 s), not a filler at 1.5 s.
+- **Partly the provider, that evening only.** Turns that passed first time got slower through the evening on the
+  same code (2.1 → 3.3 s) and were back to 1.9 s at midday.
+
+One cause is fixed: the guard blocked the agent's own "I have added this question to the agenda" sentence as an
+uncited fact, 7–9 times a run, because it only knew the older "add this to the list" wording. calls-gate-13 has none
+of those blocks, but those turns still take the slow path for another reason, so the count did not drop. calls-gate-13
+was blocked by three findings (an uncited decline of the SOC 2 report again, one unsupported sentence on access
+roles, one webhook contradiction). Still open: the first-draft failure rate, and evidence markup such as
+`[source core#4; quote: ...]` that now leaks into some replies.
 
 **What the gate does not cover.** It is about high-risk topics and contradictions. Each passing run still has 5–10
 lower-risk turns that state something uncited or unsupported about everyday features, and 1–3 turns where the agent
@@ -311,9 +330,10 @@ tests/                   406 tests, written before the code they cover
 ## Known limits
 
 - **Simulated buyers aren't real buyers.** The suite is a floor, not proof. The next step is to replay real transcripts.
-- **The current code has not passed the gate three times in a row.** calls-gate-12 was blocked by two findings that
-  still need a person's review, and the latest runs were slower than before. Next: review the two findings, find
-  out whether the slowdown is the new demo flow or provider throttling, then run three more.
+- **The current code has not passed the gate three times in a row.** calls-gate-12 and 13 were blocked by findings
+  that still need a person's review, and replies are slower than before the demo-flow changes. Next: get the first
+  draft to pass the checks as often as it did in calls-gate-9, stop evidence markup leaking into replies, review
+  the findings, then run three more.
 - **Live runs can't run side by side.** Three parallel runs exceeded the provider's token quota and failed; there is
   no back-off beyond the client's default retries.
 - **Five calls are a small sample.** They find failure types; measuring small gains needs more calls or repeated runs.
