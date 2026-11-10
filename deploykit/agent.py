@@ -39,13 +39,21 @@ FALLBACK_REPLY = ("I can't confirm that from HiBob's material, and I don't want 
 
 HANDOFF_REPLY = "Of course. I'm handing you over to a HiBob team member now."
 
+_PERSON = (r"(?:human|person|someone|somebody|rep|representative|sales(?:\s+(?:rep|person|team))?|agent|team|"
+           r"account\s+executive|account\s+manager)")
 _HUMAN = [re.compile(p, re.I) for p in (
-    r"\b(talk|speak|chat)\s+(to|with)\s+(a\s+|an\s+|some\s*one|somebody|your\s+)?(real\s+|actual\s+)?"
-    r"(human|person|someone|somebody|rep|representative|sales|agent|team)\b",
+    r"\b(talk|speak|chat)\s+(to|with)\s+(a\s+|an\s+|some\s*one|somebody|your\s+)?(real\s+|actual\s+)?" + _PERSON + r"\b",
     r"\b(get|give|connect|transfer|put|pass)\s+me\s+(to\s+|with\s+|through\s+to\s+)?(a\s+|an\s+)?(real\s+)?"
-    r"(human|person|someone|somebody|rep|representative|sales)\b",
+    r"(human|person|someone|somebody|rep|representative|sales|account\s+executive)\b",
     r"\b(real|actual|live)\s+(person|human)\b",
     r"\bhuman\s+(now|please)\b",
+    # "your manager" is a person at HiBob; "a manager" or "their manager" is a question about the product.
+    r"\b(talk|speak|chat)\s+(to|with)\s+your\s+(manager|boss|supervisor|colleague)\b",
+    # Asking for a call or meeting with sales or with someone at HiBob (review, 10 Nov: "Can I get a call with an
+    # account executive?" was answered by the model).
+    r"\b(?:call|meeting|chat|conversation|demo)\s+with\s+(?:a\s+|an\s+|the\s+|your\s+)?(?:real\s+)?"
+    r"(?:human|person|rep|representative|sales(?:\s+(?:rep|person|team))?|account\s+executive|account\s+manager|"
+    r"someone\s+(?:from|at|on)\s+(?:your|the|hibob|sales))\b",
 )]
 
 
@@ -58,9 +66,17 @@ def offers_list(reply: str) -> bool:
     return bool(_OFFER.search(reply or ""))
 
 
-_WRAP_UP = re.compile(r"\b(?:wrap(?:ping)? (?:this |things |it )?up|out of time|(?:have|need|got) to (?:go|run|jump|drop)|"
-                      r"that['’]s all|thanks for (?:your|the) time|before we finish|let['’]s (?:finish|stop) here|"
-                      r"what happens next|bye|goodbye|see you(?: later| soon)?)\b", re.I)
+# What ends a call. Each phrase must be about the buyer leaving, not about the product (review, 10 Nov: "We need to
+# run payroll in the UK", "Do employees have to go through SSO?" and "say goodbye to spreadsheets" ended the call).
+_CLAUSE_END = r"(?=\s*(?:[.,;!?—–-]|$|(?:so|but|and|thanks|thank you)\b))"
+_WRAP_UP = re.compile(
+    r"\bwrap(?:ping)? (?:this |things |it )?up\b|\bout of time\b"
+    r"|\b(?:i|we)(?:['’]ve| have| need|['’]ll have| will have|['’]ve got| have got| got| gotta)(?: to)? "
+    r"(?:go|run|jump|drop|leave|head)(?: off| out| now| soon| here)*" + _CLAUSE_END +
+    r"|\bthat['’]s all" + r"(?=\s*(?:[.,;!?—–-]|$|(?:for (?:now|today|me|us)|from (?:me|us|my side|our side)|i |we |thanks|thank you)))"
+    r"|\bthanks for (?:your|the) time\b|\bbefore we finish\b|\blet['’]s (?:finish|stop) here\b"
+    r"|\bwhat happens next(?=\s*[?.!]*\s*$)"
+    r"|(?<!say )(?<!saying )(?<!said )\b(?:good)?bye\b(?! to\b)|\bsee you(?: later| soon)?\b", re.I)
 
 
 _ASK = re.compile(r"\?|^\s*(?:can|could|would|will|do|does|did|is|are|was|were|have|has|should|may|what|how|which|"
@@ -111,12 +127,32 @@ _SMALL_FALLBACK = (
 )
 
 
-def small_talk_fallback(text: str) -> str:
+def small_talk_fallback(text: str, mid_call: bool = False) -> str:
     low = (text or "").lower()
     for pattern, reply in _SMALL_FALLBACK:
         if pattern.search(low):
             return reply
+    if mid_call:  # a "hello" in the middle of a call checks the agent is still there; it is not a first meeting
+        return "I'm here. What would you like to look at next?"
     return "Hi! Nice to meet you. What would you like to see in Bob today?"
+
+
+_GREETS_AGAIN = re.compile(r"^\W*(?:hi|hello|hey|hiya|greetings|good (?:morning|afternoon|evening))\b|"
+                           r"\b(?:nice|pleased|great|good|lovely) to meet you\b", re.I)
+
+_CLARIFY = re.compile(
+    r"^(?:sorry|pardon|excuse me|hm+|uh+|eh)?[\s,.!]*(?:wdym|wym|what do (?:you|u|ya) mean|what(?:'s| is) that"
+    r"|meaning|huh|what|sorry|pardon(?: me)?|come again|say (?:that )?again|in what sense|how so|how do you mean"
+    r"|(?:i )?(?:do not|don'?t|didn'?t) (?:understand|get it|get that|follow)|(?:i'?m )?not sure (?:what you mean|i (?:understand|follow))"
+    r"|(?:can|could) you (?:rephrase|repeat|clarify|say that again|explain)(?: (?:that|it|the question))?"
+    r"|what are you asking|what(?:'s| is) the question)[\s?!.]*$", re.I)
+
+
+def is_clarification(text: str) -> bool:
+    """The buyer did not understand what the agent just said or asked ("wdym", "sorry?", "what do you mean?").
+    It is neither an answer nor a product question (Pavlo, 10 Nov: "wdym" was saved as the buyer's timeline)."""
+    t = (text or "").strip().lower().replace("’", "'")
+    return bool(t) and (bool(_CLARIFY.match(t)) or not re.search(r"[a-z0-9]", t))
 
 
 def is_wrap_up(text: str) -> bool:
@@ -131,6 +167,9 @@ def carried_tier(policy, question: str, floor: str | None) -> str:
     own = policy.question_tier(question)
     return max_tier(floor or "low", own) if own == "low" else own
 
+
+MID_CALL = (" The call is already under way: do not greet them again, do not say it is nice to meet them and do not "
+            "introduce yourself unless they ask who you are.")
 
 SMALL_TALK_SYSTEM = """You are {name}, HiBob's AI sales assistant on a live demo call. The prospect just said
 something social (a greeting, "how are you", thanks, or a question about you). Reply like a friendly professional, in
@@ -150,11 +189,32 @@ ACK_ANSWER = ("Before the demo you are getting to know the prospect, and they ju
 
 
 def fixed_answer(config: dict, question: str) -> dict | None:
-    """A reply the client fixed in advance (config "fixed_answers"), such as the one for every price question."""
+    """A reply the client fixed in advance (config "fixed_answers"), such as the one for every price question.
+
+    "except" lists phrases that contain a trigger word but are not the trigger ("cost centres", "how much time");
+    they are removed before the patterns are tried."""
     for f in config.get("fixed_answers", []):
-        if any(re.search(p, question or "", re.I) for p in f["patterns"]):
+        text = question or ""
+        for e in f.get("except", []):
+            text = re.sub(e, " ", text, flags=re.I)
+        if any(re.search(p, text, re.I) for p in f["patterns"]):
             return f
     return None
+
+
+_CLAUSES = re.compile(r"(?<=[.?!])\s+|,?\s+(?:and|but|also|plus)\s+(?:also\s+)?"
+                      r"(?=(?:how|what|which|where|when|who|is|are|does|do|can|could|will|would)\b)", re.I)
+
+
+def unfixed_part(config: dict, question: str) -> str | None:
+    """The part of a question a fixed answer does not cover: in "Does payroll cover the UK, and how much is it?"
+    the price reply answers only the second half (review, 10 Nov: the first half was dropped)."""
+    if not fixed_answer(config, question):
+        return None
+    rest = [c.strip() for c in _CLAUSES.split(question or "") if c.strip()]
+    rest = [re.sub(r"^(?:and|but|also|plus)\s+", "", c, flags=re.I) for c in rest]
+    rest = [c for c in rest if len(c.split()) >= 3 and is_question(c) and not fixed_answer(config, c)]
+    return " ".join(rest) or None
 
 
 def fixed_turn(f: dict, ids) -> dict:
@@ -305,12 +365,21 @@ class DemoAgent:
         if is_small_talk(last) and not (self._guide and self._guide.get("present")):  # "ok" after an offer = yes
             return self._small_talk(history, lang)
         fixed = fixed_answer(self.config, last) if not asks_for_human(last) else None
-        if fixed:
+        rest = unfixed_part(self.config, last) if fixed else None
+        if fixed and not rest:
             turn = fixed_turn(fixed, self.ids)
             turn["timing"] = {"streamed": False, "filler": False, "first_words_s": 0, "first_sentence_s": 0,
                               "total_s": 0}
             return turn
+        if rest:
+            # Two-part question: the model answers the part code does not, and the fixed reply is added after it.
+            history, last = history[:-1] + [{"role": "user", "content": rest}], rest
         turn = self._respond(history, lang, parked or [], floor, ledger or [])
+        if rest:
+            turn["reply"] = (turn.get("reply", "").rstrip() + " " + fixed["reply"]).strip()
+            turn["fixed"] = fixed["id"]
+            turn["citations"] = list(turn.get("citations") or []) + [
+                c for c in fixed.get("sources", []) if c in self.ids and c not in (turn.get("citations") or [])]
         if turn.get("handoff") and not asks_for_human(last):
             # Only an explicit request for a person ends in a handoff (calls-baseline: "What happens next?" did).
             turn.update(handoff=False, handoff_reason=None)
@@ -387,7 +456,11 @@ class DemoAgent:
         import time as _time
         start = _time.perf_counter()
         last = history[-1]["content"]
-        system = system or SMALL_TALK_SYSTEM.format(name=self.config.get("agent_name", "the HiBob assistant"))
+        # Small talk after the agent has already spoken is not a first meeting (Pavlo, 10 Nov: "hello" mid-call got
+        # "Hi! Nice to meet you.").
+        mid_call = system is None and any(m["role"] == "assistant" for m in history)
+        system = system or (SMALL_TALK_SYSTEM.format(name=self.config.get("agent_name", "the HiBob assistant"))
+                            + (MID_CALL if mid_call else ""))
         r = self.llm.complete("agent_fast", system, history[-6:], meta={"chunks": [], "lang": lang, "small_talk": True})
         data, _ = self._parse(r.text)
         reply = strip_cites(str(data.get("reply", "")).strip())
@@ -396,10 +469,11 @@ class DemoAgent:
             if self.glossary else re.compile(r"\b(?:bob|hibob)\b" + digit, re.I)
         sentences = [x for x in re.split(r"(?<=[.!?])\s+", reply) if x]
         bad = (not reply or len(reply) > 320 or data.get("claims")
-               or any(product.search(x) and not x.rstrip().endswith("?") for x in sentences))
+               or any(product.search(x) and not x.rstrip().endswith("?") for x in sentences)
+               or (mid_call and _GREETS_AGAIN.search(reply)))
         turn = wrap_up_turn([])
         if bad:
-            reply = fallback or small_talk_fallback(last)
+            reply = fallback or small_talk_fallback(last, mid_call=mid_call)
         turn.update(reply=reply, wrap_up=False, small_talk=True,
                     qualification=data.get("qualification") if isinstance(data.get("qualification"), dict) else {},
                     guard={"enabled": True, "retried": False, "fell_back": bool(bad), "composed": False},
