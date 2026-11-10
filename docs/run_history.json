@@ -523,6 +523,34 @@
    "contradictions": 1,
    "gate": false,
    "cost_usd": 0.33
+  },
+  {
+   "run": "calls-gate-14",
+   "change": "Answer a direct question even if the fact was given; a decline with a reason needs a quote",
+   "turns": 75,
+   "passed": 68,
+   "stages": {
+    "1-5": 0.92,
+    "6-10": 0.96,
+    "11-15": 0.84
+   },
+   "contradictions": 0,
+   "gate": true,
+   "cost_usd": 0.29
+  },
+  {
+   "run": "calls-gate-15",
+   "change": "same code",
+   "turns": 75,
+   "passed": 68,
+   "stages": {
+    "1-5": 0.88,
+    "6-10": 1.0,
+    "11-15": 0.84
+   },
+   "contradictions": 0,
+   "gate": false,
+   "cost_usd": 0.28
   }
  ]
 }
