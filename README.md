@@ -2,6 +2,24 @@
 
 **A mock forward-deployed engagement: taking a sales agent for HiBob from "demo works" to "safe to put in front of buyers".**
 
+## For reviewers
+
+**[Watch the 3-minute walkthrough (Loom)](https://www.loom.com/share/9fb6fb838377477ab79e642fe6095def)**
+
+- **What it is:** an AI sales-demo agent that answers only from the client's public pages, plus everything around it
+  that decides whether it can go live: simulated buyer calls, a pre-send guard, risk tiers, an independent judge and a
+  release gate.
+- **Results:** single-question pass rate **47% → 98%** over 16 live runs. Whole 15-turn demo calls **77% → up to 92%**
+  of turns. The release gate passed **three runs in a row**. First words in about **1–1.5 s**. Judge agrees with
+  human labels on **14 of 15**. **463 offline tests**.
+- **Code to read first:** [`guard.py`](deploykit/guard.py) (checks every sentence against a quote before it is sent),
+  [`risk.py`](deploykit/risk.py) (risk tiers), [`gate.py`](deploykit/gate.py) (release rule),
+  [`calls.py`](deploykit/calls.py) (simulated demo calls).
+- **Honest status:** later demo-flow changes broke the three-pass streak. Every block since has a fix and a test, and
+  the confirming runs are next (see [Release gate](#release-gate-three-passes-in-a-row-then-a-re-test-after-the-code-changed)).
+
+## The project
+
 I built a website sales agent for HiBob (HR software). Then I built what an FDE needs around it before go-live:
 
 - a simulated-buyer test suite;
@@ -9,7 +27,7 @@ I built a website sales agent for HiBob (HR software). Then I built what an FDE 
 - a guard that checks each reply before it is sent;
 - risk-tiered guardrails;
 - a release gate;
-- an AWS stack that runs the suite every night.
+- an AWS stack (CDK) to run the suite every night.
 
 Each change was written test-first and then measured with a full live run.
 
@@ -25,8 +43,8 @@ and the risk tier carried from turn to turn. The second chapter exists because I
 | | |
 |---|---|
 | Chapter 1: single questions | **47% → 98%** pass rate (42 of 43 sessions); release gate **passes** |
-| Chapter 2: demo calls | **77% → 79–92%** of 75 turns; release gate **passed 3 runs in a row** on the 9 Nov morning code (calls-gate-7 to 9). After later changes: pass, pass, blocked, blocked, **pass, blocked** (calls-gate-10 to 15); the cause of each block is fixed, and three passes in a row on the final code are still to be run |
-| Speed (live mode) | first words in **about 1–1.5 s**, reply finished in **1.2–2 s** (median, up to calls-gate-9). The 9 Nov demo-flow changes slowed this to 2.7 s and 2.9 s (calls-gate-13); after two fixes it is back to **1.1–1.2 s** and **1.2–1.4 s** (calls-gate-14, 15) |
+| Chapter 2: demo calls | **77% → 79–92%** of 75 turns; release gate **passed 3 runs in a row** (calls-gate-7 to 9); re-test on the latest code in progress ([details](#release-gate-three-passes-in-a-row-then-a-re-test-after-the-code-changed)) |
+| Speed (live mode) | first words in **about 1–1.5 s**, reply finished in **1.2–1.4 s** (median, calls-gate-14 and 15) |
 | Judge vs human labels | 14 of 15 agree (93%) |
 | Cost | **$2.34 billed** for the 16 chapter 1 runs; about $0.30 per call run (Nebius, open-weight models) |
 | Tests | 463, all offline (fake model, fake AWS) |
@@ -275,8 +293,8 @@ lower-risk turns that state something uncited or unsupported about everyday feat
 answered once and declined once. Those are the next work, and a client might reasonably want them in the gate too.
 
 Times are measured from GitHub's US runners to Nebius in Europe, so they include the transatlantic round trip
-(roughly 0.1–0.2 s per call). Still open: a third of turns still need the filler, mostly at high risk when the model
-writes sentences instead of picking approved ones, and the slow path can park a question that a later turn
+(roughly 0.1–0.2 s per call). Still open: about a fifth of turns still need a second draft (16–17 of 75 in calls-gate-14 and 15), mostly at
+high risk when the model writes sentences instead of picking approved ones, and the slow path can park a question that a later turn
 answers, which the call judge counts as a contradiction.
 
 ## Try it yourself
