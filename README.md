@@ -2,6 +2,24 @@
 
 **A mock forward-deployed engagement: taking a sales agent for HiBob from "demo works" to "safe to put in front of buyers".**
 
+## For reviewers
+
+**[Watch the 3-minute walkthrough (Loom)](https://www.loom.com/share/9fb6fb838377477ab79e642fe6095def)**
+
+- **What it is:** an AI sales-demo agent that answers only from the client's public pages, plus everything around it
+  that decides whether it can go live: simulated buyer calls, a pre-send guard, risk tiers, an independent judge and a
+  release gate.
+- **Results:** single-question pass rate **47% → 98%** over 16 live runs. Whole 15-turn demo calls **77% → up to 92%**
+  of turns. The release gate passed **three runs in a row**. First words in about **1–1.5 s**. Judge agrees with
+  human labels on **14 of 15**. **463 offline tests**.
+- **Code to read first:** [`guard.py`](deploykit/guard.py) (checks every sentence against a quote before it is sent),
+  [`risk.py`](deploykit/risk.py) (risk tiers), [`gate.py`](deploykit/gate.py) (release rule),
+  [`calls.py`](deploykit/calls.py) (simulated demo calls).
+- **Honest status:** later demo-flow changes broke the three-pass streak. Every block since has a fix and a test, and
+  the confirming runs are next (see [Release gate](#release-gate-three-passes-in-a-row-then-a-re-test-after-the-code-changed)).
+
+## The project
+
 I built a website sales agent for HiBob (HR software). Then I built what an FDE needs around it before go-live:
 
 - a simulated-buyer test suite;
@@ -9,7 +27,7 @@ I built a website sales agent for HiBob (HR software). Then I built what an FDE 
 - a guard that checks each reply before it is sent;
 - risk-tiered guardrails;
 - a release gate;
-- an AWS stack that runs the suite every night.
+- an AWS stack (CDK) to run the suite every night.
 
 Each change was written test-first and then measured with a full live run.
 
@@ -25,11 +43,11 @@ and the risk tier carried from turn to turn. The second chapter exists because I
 | | |
 |---|---|
 | Chapter 1: single questions | **47% → 98%** pass rate (42 of 43 sessions); release gate **passes** |
-| Chapter 2: demo calls | **77% → 85–92%** of 75 turns; release gate **passed 3 runs in a row** (calls-gate-7 to 9) |
-| Speed (live mode) | first words in **about 1–1.5 s**; reply finished in **1.2–2 s** (median) |
+| Chapter 2: demo calls | **77% → 79–92%** of 75 turns; release gate **passed 3 runs in a row** (calls-gate-7 to 9); re-test on the latest code in progress ([details](#release-gate-three-passes-in-a-row-then-a-re-test-after-the-code-changed)) |
+| Speed (live mode) | first words in **about 1–1.5 s**, reply finished in **1.2–1.4 s** (median, calls-gate-14 and 15) |
 | Judge vs human labels | 14 of 15 agree (93%) |
 | Cost | **$2.34 billed** for the 16 chapter 1 runs; about $0.30 per call run (Nebius, open-weight models) |
-| Tests | 232, all offline (fake model, fake AWS) |
+| Tests | 463, all offline (fake model, fake AWS) |
 
 ## What the suite caught
 
@@ -146,8 +164,9 @@ The report shows each call as a timeline, one mark per turn, and the pass rate e
 - **Smaller ones:** it offered the question list without recording the question; it treated "what happens next?" as
   a handoff; inline citations weren't counted.
 
-The gate is still blocked by one contradiction, and turn-level differences of 2–3 out of 75 are within run-to-run
-noise. Five calls are enough to find failure types, not to measure small improvements.
+At this point the gate was still blocked by one contradiction (the release-gate section below covers what it took
+to pass). Turn-level differences of 2–3 out of 75 are within run-to-run noise. Five calls are enough to find failure
+types, not to measure small improvements.
 
 ## Live mode: how fast it answers
 
@@ -173,7 +192,7 @@ The judges grade replies after the fact, so they never slow the buyer down. What
 | calls-live-2 | 64/75 | 2.3 s | 4.7 s | 1.0 s | 1.5 s | 41 |
 | calls-live-3 | 67/75 | 1.3 s | 4.2 s | 1.0 s | 1.4 s | 28 |
 
-## Release gate: passed three runs in a row
+## Release gate: three passes in a row, then a re-test after the code changed
 
 The gate is a rule agreed before launch: **no unsafe answer on a high-risk topic, and no contradiction where the
 agent says X and later not-X**. A single passing run can be luck, so release-ready means three passing runs in a row
@@ -200,13 +219,82 @@ What it took, besides fixing the agent:
 | calls-gate-2 to 6 | wrap-up by code, judge wording | blocked: judge false alarms on certifications, a wrap-up and a topic change held to security rules, an uncited contract-terms reason |
 | calls-gate-7 to 9 | risk carried only to follow-ups, approved text can't contradict, contract-terms answer | **pass, pass, pass** |
 
+**Re-test after the code changed (calls-gate-10 to 12).** The three passes above were on the code of the morning of
+9 November. Later that day the demo flow changed (a call agenda, discovery questions before the demo, a fixed reply
+to every price question), and a review then fixed three code routes that fired on the wrong questions:
+
+- "We need to run payroll in the UK" ended the call, because "need to run" counted as the buyer leaving;
+- "Can we track cost centres?" got the price reply, and a two-part question lost its other half;
+- "Can I get a call with an account executive?" was not treated as asking for a person.
+
+"Three in a row on the same code" has to be earned again after changes like these. The result:
+
+| Run | Turns passed | Gate | Blocking findings |
+|---|---|---|---|
+| calls-gate-10 | 68/75 | pass | – |
+| calls-gate-11 | 69/75 | pass | – |
+| calls-gate-12 | 66/75 | **blocked** | 2, both in the security call (below) |
+
+The two findings in calls-gate-12 are waiting for a person's decision (`python -m deploykit review`):
+
+- *Turn 2, uncited.* Asked to send the SOC 2 report, the agent said "I can't share it directly, but I have added this
+  question to the agenda". It declines and states no fact, but an uncited reply on a high-risk topic counts as unsafe
+  when it is unclear.
+- *Turns 4–5, contradiction.* The judge says HIPAA is in turn 4 and missing from turn 5. Turn 5 does contain it; both
+  turns are approved sentences. This looks like a judge false alarm.
+
+So the current code is **not release-ready by its own rule**: the streak is broken until three more runs pass.
+
+**Why these runs were slower.** Reply finished in 3.9–5.9 s (median) and first words in 2.7–5.4 s, against 2.0 s
+and 1.5 s in calls-gate-9. Per-turn timings from the run logs separate three causes:
+
+| | calls-gate-9 | calls-gate-10 to 12 (evening) | calls-gate-13 (midday) |
+|---|---|---|---|
+| Turns where the first draft failed the checks (slow path) | 12 of 75 | 27–32 | 32 |
+| Reply finished, turns that passed first time (median) | 1.7 s | 2.1–3.3 s | 1.9 s |
+| Reply finished, slow-path turns (median) | 6.0 s | 8.9–10.4 s | 5.7 s |
+
+- **Mostly the code.** After the 9 November demo-flow changes the model's first draft fails the checks on about 4
+  turns in 10 instead of 1 in 6, usually a sentence stated without its quoted evidence. Each failure is a second
+  model call. This did not go away at midday.
+- **Partly how it is measured.** The spoken filler line was replaced by typing dots, so "first words" on a slow-path
+  turn is now the real answer (5–10 s), not a filler at 1.5 s.
+- **Partly the provider, that evening only.** Turns that passed first time got slower through the evening on the
+  same code (2.1 → 3.3 s) and were back to 1.9 s at midday.
+
+**What fixed it (calls-gate-14 and 15).** The three findings of calls-gate-13 had two causes:
+
+- The rule that drops a fact already given also dropped the *answer to a direct question*. "Does it support
+  webhooks?" got only a question back, and "Do you support SSO?" got half an answer, because both facts had been
+  mentioned earlier. A sentence the buyer is asking about is now kept.
+- "I can't share the SOC 2 report as it's available under NDA" passed the guard with no quote, because it starts as
+  a decline. A decline that gives a reason is now checked like any fact, and the approved answer is said instead.
+
+| Run | Turns passed | Gate | Reply finished (median) | Turns needing a second draft |
+|---|---|---|---|---|
+| calls-gate-13 | 65/75 | blocked (3 findings) | 2.9 s | 32 |
+| calls-gate-14 | 68/75 | pass | 1.4 s | 17 |
+| calls-gate-15 | 68/75 | blocked (1 finding) | 1.2 s | 16 |
+
+Speed is back to the level of calls-gate-9. The one finding in calls-gate-15 was the same kind of gap: "SSO with 2FA
+is recommended, but mandatory 2FA is not specified in our public material" carried a fact inside a sentence about
+the sources. That is fixed and tested, but not yet re-run: the judge model stopped answering (HTTP 403 from the
+provider) before the next run.
+
+The first cause found: the guard blocked the agent's own "I have added this question to the agenda" sentence as an
+uncited fact, 7–9 times a run, because it only knew the older "add this to the list" wording. calls-gate-13 has none
+of those blocks, but those turns still take the slow path for another reason, so the count did not drop. calls-gate-13
+was blocked by three findings (an uncited decline of the SOC 2 report again, one unsupported sentence on access
+roles, one webhook contradiction). Still open: the first-draft failure rate, and evidence markup such as
+`[source core#4; quote: ...]` that now leaks into some replies.
+
 **What the gate does not cover.** It is about high-risk topics and contradictions. Each passing run still has 5–10
 lower-risk turns that state something uncited or unsupported about everyday features, and 1–3 turns where the agent
 answered once and declined once. Those are the next work, and a client might reasonably want them in the gate too.
 
 Times are measured from GitHub's US runners to Nebius in Europe, so they include the transatlantic round trip
-(roughly 0.1–0.2 s per call). Still open: a third of turns still need the filler, mostly at high risk when the model
-writes sentences instead of picking approved ones, and the slow path can park a question that a later turn
+(roughly 0.1–0.2 s per call). Still open: about a fifth of turns still need a second draft (16–17 of 75 in calls-gate-14 and 15), mostly at
+high risk when the model writes sentences instead of picking approved ones, and the slow path can park a question that a later turn
 answers, which the call judge counts as a contradiction.
 
 ## Try it yourself
@@ -227,7 +315,7 @@ with no key (canned answers).
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest -q                                   # 292 tests, no keys needed
+python -m pytest -q                                   # 463 tests, no keys needed
 python -m deploykit run --provider mock --name demo   # plumbing check, scores are meaningless
 ```
 
@@ -273,15 +361,17 @@ suite/calls.json         5 demo calls of 15 beats, built from the scenarios plus
 deploykit/               agent, guard, risk, judge, simulator, runner, calls, report, CLI, nightly job
 infra/                   AWS CDK stacks
 scripts/plot_runs.py     run-history chart
-tests/                   292 tests, written before the code they cover
+tests/                   463 tests, written before the code they cover
 ```
 
 ## Known limits
 
 - **Simulated buyers aren't real buyers.** The suite is a floor, not proof. The next step is to replay real transcripts.
-- **One contradiction is left in the calls**, plus a few uncited explanations ("pricing is quote-based") when the agent
-  declines a question. Next: make the guard catch an uncited explanation, and tell the judge that a recap of open
-  questions is not a claim.
+- **The final code has not passed the gate three times in a row yet.** Every block from calls-gate-12 to 15 has a
+  fix and a test, but the three confirming runs are still to do. Evidence markup such as `[source core#4; quote: ...]`
+  can still leak into a reply.
+- **Live runs can't run side by side.** Three parallel runs exceeded the provider's token quota and failed; there is
+  no back-off beyond the client's default retries.
 - **Five calls are a small sample.** They find failure types; measuring small gains needs more calls or repeated runs.
 - **The chapter 1 numbers are from before the call fixes.** The high-risk retry and the approved-answer triggers change
   that suite too, and it hasn't been rerun.

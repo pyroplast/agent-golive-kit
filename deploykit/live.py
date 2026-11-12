@@ -37,6 +37,26 @@ def _words(s: str) -> set[str]:
     return {w for w in _norm(s).split() if w not in _STOP}
 
 
+# Words that say nothing about the topic of a question ("Does Bob support X?" is about X).
+_GENERIC = set("bob hibob do does did have has support supports supported offer offers there any what which how "
+               "when where who why use uses used using work works get got give me us i tell show about more "
+               "yes no ok okay please thanks great now then just really actually".split())
+
+
+def _topic_words(s: str) -> set[str]:
+    return {w[:-1] if len(w) > 3 and w.endswith("s") else w for w in _words(s) if w not in _GENERIC and len(w) > 2}
+
+
+def _asked_about(question: str, say: str, claims: list) -> bool:
+    """The buyer's question is about what this sentence says: it shares a topic word with the sentence or its
+    quotes. Such a sentence is the answer, not a repeat (calls-gate-13: "Does it support webhooks?" got only a
+    question back, because the webhook fact had been given a turn earlier)."""
+    if not is_question(question):
+        return False
+    text = say + " " + " ".join(str(c.get("quote", "")) for c in claims)
+    return bool(_topic_words(question) & _topic_words(text))
+
+
 def _same_quote(a: str, b: str) -> bool:
     """Two quotes from one source overlap: one contains the other, or they share most of their words."""
     a, b = _norm(a), _norm(b)
@@ -159,7 +179,8 @@ class LiveAgent(DemoAgent):
             is_ask = say.rstrip().endswith("?")
             old_fact = bool(c) and bool(given) and all(
                 any(x.get("source") == s and _same_quote(x.get("quote", ""), q) for s, q in given) for x in c)
-            if not allow_repeat and not is_ask and (old_fact or _restates(say, earlier)):
+            if (not allow_repeat and not is_ask and (old_fact or _restates(say, earlier))
+                    and not _asked_about(last_q, say, c)):
                 repeated[0] += 1
                 return False
             mini = self._to_turn({"reply": say, "claims": c, "kind": "answer" if c else "clarify"}, False)
@@ -250,6 +271,10 @@ class LiveAgent(DemoAgent):
             self._emit("say", SAFE_TAIL, t0)
         if held and getattr(self, "drop_questions", False):
             held.clear()  # discovery: code adds the one question for this turn (Pavlo, 9 Nov)
+        keep = getattr(self, "question_filter", None)
+        if held and keep:  # e.g. no offer of a topic this very reply has just covered (Pavlo, 10 Nov)
+            so_far = {"reply": reply, "citations": [str(c.get("source", "")) for c in claims] + list(approved_cites)}
+            held[:] = [h for h in held if keep(so_far, h)]
         if held:
             reply = " ".join([reply, *held]).strip()
             for h in held:

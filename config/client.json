@@ -55,27 +55,32 @@
     {
       "field": "company_size",
       "question": "How many employees do you have?",
-      "ask": "Roughly how many people are on your team?"
+      "ask": "Roughly how many people are on your team?",
+      "clarify": "Roughly how many employees does your company have?"
     },
     {
       "field": "countries",
       "question": "Which countries do you employ people in?",
-      "ask": "Which countries do you employ people in?"
+      "ask": "Which countries do you employ people in?",
+      "clarify": "In which countries do you have employees?"
     },
     {
       "field": "current_system",
       "question": "What do you use for HR today?",
-      "ask": "What do you use for HR today?"
+      "ask": "What do you use for HR today?",
+      "clarify": "Where do you keep your employee records today: spreadsheets, or an HR system?"
     },
     {
       "field": "modules",
       "question": "Which areas matter most: core HR, talent, payroll, or compensation?",
-      "ask": "What's the biggest HR headache you'd like to fix first?"
+      "ask": "What's the biggest HR headache you'd like to fix first?",
+      "clarify": "Which part of HR takes the most manual work today: for example onboarding, time off, reviews or payroll?"
     },
     {
       "field": "timeline",
       "question": "When do you want to be live?",
-      "ask": "And when would you ideally like to be up and running?"
+      "ask": "And when would you ideally like to be up and running?",
+      "clarify": "I mean your target date: when would you like the new HR system to be in use?"
     }
   ],
   "handoff_rules": [
@@ -219,7 +224,20 @@
         "\\b(?:discount|discounts|ballpark|quote)\\b",
         "\\bper (?:employee|user|seat|head|month)\\b",
         "\\b(?:cheaper|more expensive|expensive)\\b",
-        "\\bfees?\\b"
+        "\\bfees?\\b",
+        "\\bcharge[sd]?\\b"
+      ],
+      "except": [
+        "\\bcost cent(?:re|er)s?\\b",
+        "\\b(?:hiring|people|labou?r|payroll|headcount|staff|staffing|recruitment|recruiting|training|turnover|operating|admin|travel|employment|salary)\\s+costs?\\b",
+        "\\b(?:reduc|cut|lower|sav|control|track|forecast|allocat|manag|report)\\w*\\s+(?:(?:on|our|the|your)\\s+)?(?:\\w+\\s+)?costs?\\b",
+        "\\bhow much\\s+(?:time|effort|work|training|support|customi[sz]ation|setup|set-up|configuration|data|history|detail|control|visibility|of)\\b",
+        "\\bhow much (?:longer|faster|easier)\\b",
+        "\\bquote (?:you|that|this|it)\\b",
+        "\\b(?:how many|how often|number of)\\b[^.?!]*\\bper (?:employee|user|seat|head|month)\\b",
+        "\\b(?:pension|legal|bank|agency|recruitment|recruiter|late|transaction|membership|union|tuition)\\s+fees?\\b",
+        "\\bfees?\\s+and\\s+deductions\\b",
+        "\\bin charge\\b"
       ],
       "note": "Pavlo, 9 Nov: every price question gets this reply"
     },

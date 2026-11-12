@@ -13,7 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import re
 
 from deploykit.calls import RepeatTracker, _FROM, _INTRO, call_names
-from deploykit.agent import asks_for_human, is_question, is_small_talk, is_wrap_up
+from deploykit.agent import asks_for_human, is_clarification, is_question, is_small_talk, is_wrap_up
 from deploykit.demo_plan import DemoPlan, Discovery, agenda, learn_facts
 
 PURPOSE = "I'm the HiBob demo assistant. In today's call, I'll walk you through how the platform works and answer any questions along the way."
@@ -50,6 +50,10 @@ class ChatSession:
         start = time.perf_counter()
         first = self.turn_no == 0
         asked = is_question(text) or asks_for_human(text) or is_wrap_up(text)  # these go to the agent as usual
+        # Neither an answer nor a product question: a greeting or thanks, or "wdym" about what was just asked
+        # (Pavlo, 10 Nov: "hello" was saved as the buyer's interest and "wdym" as their timeline).
+        unclear = is_clarification(text) and not asks_for_human(text)
+        chatter = unclear or is_small_talk(text)
         intro = not asked and (first or bool(_INTRO.search(text) or _FROM.search(text)))
         disc = self.discovery
         for k, v in learn_facts(text).items():
@@ -57,7 +61,7 @@ class ChatSession:
         declined = disc.active and not first and disc.is_refusal(text)
         if declined:
             disc.stop(declined=True)
-        elif disc.active and not first and not asked and disc.pending:
+        elif disc.active and not first and not asked and not chatter and disc.pending:
             self.buyer.setdefault(disc.pending, text.strip()[:120])  # their answer to the discovery question
         in_disc = disc.active and not declined
         guide = self.plan.before(text, intro=intro and not is_small_talk(text)) if not in_disc or not disc.asked else \
@@ -65,13 +69,21 @@ class ChatSession:
         guide = {**guide, "discovery": ("question" if asked else "answer") if in_disc and not first else None}
         self.agent._guide = guide
         self.agent.drop_questions = in_disc
-        seen = None if declined else self.repeats.lookup(text)
+        # A closing question must not offer a topic the reply has just covered; code then adds the next one.
+        self.agent.question_filter = lambda so_far, q: not self.plan.is_stale_offer(q, so_far, guide)
+        seen = None if declined or unclear else self.repeats.lookup(text)
+        reask = in_disc and not first and unclear and disc.pending and disc.pending not in self.buyer
         try:
             if declined:
                 from deploykit.agent import fixed_turn
                 t = fixed_turn({"id": "skip_discovery", "reply": "No problem, let's go straight to the demo."}, set())
                 t["kind"] = "clarify"
-            elif (in_disc or first) and not asked and not is_small_talk(text) and (intro or guide["discovery"]):
+            elif reask:
+                # They did not understand the discovery question: put it another way, in code (no model call).
+                from deploykit.agent import fixed_turn
+                t = fixed_turn({"id": "rephrase_discovery", "reply": "Sorry, let me put that another way."}, set())
+                t["kind"] = "clarify"
+            elif (in_disc or first) and not asked and not chatter and (intro or guide["discovery"]):
                 m = _INTRO.search(text)
                 t = self.agent.acknowledge(list(self.history), "en", intro=first or intro,
                                            name=self.buyer.get("name") or (m.group(1) if m else None))
@@ -85,6 +97,7 @@ class ChatSession:
             self.agent.on_event = None
             self.agent._guide = None
             self.agent.drop_questions = False
+            self.agent.question_filter = None
         self._learn(text, t)
         lead, q = "", guide["next_question"]
         if first:
@@ -92,8 +105,10 @@ class ChatSession:
             lead = agenda(self.config.get("agenda_tour", "the core of the platform"), disc.active)
         if disc.active:
             nxt = disc.next_field(self.buyer)
-            if asked and not first and disc.pending and disc.pending not in self.buyer:
-                q = disc.question(disc.pending)  # they asked something instead: answer it, then ask again
+            if reask:
+                q = disc.question(disc.pending, other=True)
+            elif (asked or chatter) and not first and disc.pending and disc.pending not in self.buyer:
+                q = disc.question(disc.pending)  # they asked or said something else: reply, then ask again
             elif nxt:
                 disc.asked.add(nxt)
                 disc.pending, q = nxt, disc.question(nxt)
@@ -101,6 +116,16 @@ class ChatSession:
                 disc.stop()
                 lead = (lead + " " if lead else "") + "Thanks, that gives me a good picture."
                 q = self.plan.next_question()
+        streamed = any(e["type"] == "say" for e in heard)
+        if not disc.active and not first and not t.get("wrap_up") and not t.get("handoff"):
+            now = self.plan.covered_by(t, guide)
+            parts = re.split(r"(?<=[.!?])\s+", t["reply"].strip())
+            if not streamed:  # a reply that arrived in one piece: drop its own offer of a covered topic
+                while parts and parts[-1].rstrip().endswith("?") and self.plan.is_stale_offer(parts[-1], t, guide):
+                    parts.pop()
+                t["reply"] = " ".join(parts)
+            if self.plan.offers(q) in now:
+                q = self.plan.next_question(exclude=now)
         said = t["reply"]
         added = self._follow_up(t, q, lead, replace=in_disc or first, streamed=any(e["type"] == "say" for e in heard))
         if not any(e["type"] == "say" for e in heard):  # e.g. the wrap-up, written by code in one piece
